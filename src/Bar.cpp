@@ -163,13 +163,17 @@ Bar::Bar(
 	in.save_nodes("barin");
 	in.save_poly("barin");
 
-	tetrahedralize("pqz", &in, &out);
+	//in_2.load_ply("icosahedron");
+	//in_2.load_ply("dodecahedron");
+	//in_2.load_off("octtorus");
+	in_2.load_off("N");
+
+	tetrahedralize("pqz", &in_2, &out);
 
 	// Output mesh to files 'barout.node', 'barout.ele' and 'barout.face'.
 	out.save_nodes("barout");
 	out.save_elements("barout");
 	out.save_faces("barout");
-
 
 	nVerts = out.numberofpoints;
 	nTets = out.numberoftetrahedra;
@@ -572,8 +576,8 @@ void Bar::step(double h, const Vector3d &grav) {
 	//cout << X << endl << endl;
 	 //Collision Detection with the floor
 	for (int i = 0; i < (int)particles.size(); i++) {
-		if (particles[i]->x(1) <= -7 && particles[i]->v(1)<0) {
-			particles[i]->x(1) = -7;
+		if (particles[i]->x(1) <= -6 && particles[i]->v(1)<0) {
+			particles[i]->x(1) = -6;
 			particles[i]->v(1) = 0;
 		}
 	}

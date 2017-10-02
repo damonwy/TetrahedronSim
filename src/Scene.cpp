@@ -25,7 +25,7 @@ Scene::~Scene()
 void Scene::load(const string &RESOURCE_DIR)
 {
 	// Units: meters, kilograms, seconds
-	h = 2e-3;
+	h = 5e-2;
 	
 	grav << 0.0, -10, 0.0;
 	
@@ -36,9 +36,7 @@ void Scene::load(const string &RESOURCE_DIR)
 	double height = 12.0;
 	//double stiffness = 1e2;
 	Vector2d damping(0.0, 1.0);
-
 	// Cloth 
-
 	//Vector3d x00(-0.25, 0.5, 0.0);
 	//Vector3d x01(0.25, 0.5, 0.0);
 	//Vector3d x10(-0.25, 0.5, -0.5);
@@ -47,7 +45,6 @@ void Scene::load(const string &RESOURCE_DIR)
 	//Vector3d x1(-0.1, 0.85, -0.05);
 	//Vector3d x2(0.0, 0.9, 0.0);
 	//Vector3d x3(0.1, 0.85, -0.05);
-
 
 	// Tetrahedron
 

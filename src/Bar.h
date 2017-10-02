@@ -46,7 +46,7 @@ private:
 	int nFacets;
 	int nTriFaces;
 	int nTets;
-	tetgenio in, out;
+	tetgenio in, out, in_2;
 
 	Eigen::Matrix3d X_inv;
 	Eigen::MatrixXd X_invs;
