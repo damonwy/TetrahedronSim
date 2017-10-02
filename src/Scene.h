@@ -9,8 +9,9 @@
 #define EIGEN_DONT_ALIGN_STATICALLY
 #include <Eigen/Dense>
 
-class Tetrahedron;
+//class Tetrahedron;
 //class Cloth;
+class Bar;
 class Particle;
 class MatrixStack;
 class Program;
@@ -41,8 +42,9 @@ private:
 	
 	std::shared_ptr<Shape> sphereShape;
 	//std::shared_ptr<Cloth> cloth;
-	std::shared_ptr<Tetrahedron> tet;
-	std::vector< std::shared_ptr<Particle> > spheres;
+	//std::shared_ptr<Tetrahedron> tet;
+	std::shared_ptr<Bar> bar;
+	//std::vector< std::shared_ptr<Particle> > spheres;
 };
 
 #endif

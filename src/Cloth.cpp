@@ -288,8 +288,8 @@ void Cloth::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p) const
 	glBindBuffer(GL_ARRAY_BUFFER, posBufID);
 	
 	glBufferData(GL_ARRAY_BUFFER, posBuf.size()*sizeof(float), &posBuf[0], GL_DYNAMIC_DRAW);
-
 	glVertexAttribPointer(h_pos, 3, GL_FLOAT, GL_FALSE, 0, (const void *)0);
+
 	int h_nor = p->getAttribute("aNor");
 	glEnableVertexAttribArray(h_nor);
 	glBindBuffer(GL_ARRAY_BUFFER, norBufID);

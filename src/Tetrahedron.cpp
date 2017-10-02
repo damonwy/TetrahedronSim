@@ -1,5 +1,5 @@
 #include <iostream>
-
+#include <tetgen.h>
 #include "Tetrahedron.h"
 #include "Particle.h"
 #include "Program.h"
@@ -228,7 +228,6 @@ void Tetrahedron::step(double h, const Vector3d &grav) {
 	y0 = -y1 - y2 - y3;
 
 	ys.row(0) = y0;
-
 	ys.row(1) = y1;
 	ys.row(2) = y2;
 	ys.row(3) = y3;
@@ -251,7 +250,7 @@ void Tetrahedron::step(double h, const Vector3d &grav) {
 
 		Matrix3d SiEs = Si * E2;
 
-		for (int j = 0; j < 4; j++) {
+		for (int j = i; j < 4; j++) {
 
 			//Compute vertex j
 			int jj = 3 * j;// Local starting index into the 12x12 Ke matrix
@@ -288,31 +287,36 @@ void Tetrahedron::step(double h, const Vector3d &grav) {
 	f += K*p - Re*Ke*p;
 	//cout << f << endl;
 
-	MatrixXd G(9, 12);
-	G.setZero();
-	VectorXi fixed(3);
-	fixed << 0, 1, 3;
+	
+	//VectorXi fixed(0);
+	//fixed << 0;
 	double damping = 0.9;
 	// Fixed point constraints:
-
-	for (int i = 0; i < fixed.size(); i++) {
-		G.block<3, 3>(3 * i, 3* fixed(i)) = I; // filling G
-	}
+	//MatrixXd G(fixed.size()*3, 12);
+	//G.setZero();
+	//for (int i = 0; i < fixed.size(); i++) {
+	//	G.block<3, 3>(3 * i, 3* fixed(i)) = I; // filling G
+	//}
 
 	//cout << G << endl;
+	//int numfixed = fixed.size();
 
-	MatrixXd LHS(21, 21);
+	//MatrixXd LHS(12+(int)(numfixed*3), 12+(int)(numfixed*3));
+
+	MatrixXd LHS(12, 12);
+
 	LHS.setZero();
 	LHS.block<12, 12>(0, 0) = M + h*damping*M - h*h*damping*K;
 	//LHS.block<12, 12>(0, 0) = M + h*damping*M;
-	MatrixXd temp(12, 9);
-	temp = G.transpose();
-	LHS.block<12, 9>(0, 12) = temp;
-	LHS.block<9, 12>(12, 0) = G;
+	//MatrixXd temp(12, fixed.size());
+	//temp = G.transpose();
+	//LHS.block(0, 12, 12, numfixed*3) = temp;
+	//LHS.block(12, 0, numfixed*3, 12) = G;
 	
 	//cout << LHS << endl;
 
-	VectorXd RHS(21);
+	//VectorXd RHS(12+(int)(numfixed*3));
+	VectorXd RHS(12);
 	RHS.setZero();
 	RHS.segment<12>(0) = M*v + h*f;
 
@@ -320,9 +324,11 @@ void Tetrahedron::step(double h, const Vector3d &grav) {
 
 	//VectorXd v_new = (M).ldlt().solve(M*v + h*f);
 	VectorXd result = (LHS).ldlt().solve(RHS);
-	cout << result(7) << endl<<endl;
+	//cout << result(7) << endl<<endl;
 
 	VectorXd v_new = result.segment<12>(0);
+	cout << v_new << endl << endl;
+
 	// Update velocity
 	for (int i = 0; i < (int)particles.size(); i++) {
 		if (particles[i]->i != -1) {
@@ -339,6 +345,25 @@ void Tetrahedron::step(double h, const Vector3d &grav) {
 	}
 
 	//cout << "v_new" << v_new << endl << endl;
+	
+	
+	// Collision Detection with the floor
+	for (int i = 0; i < (int)particles.size(); i++) {
+		if (particles[i]->x(1) <= 0 && particles[i]->v(1)<0) {
+			particles[i]->x(1) = 0;
+
+			particles[i]->v(1) = 0;
+		}
+	}
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	updatePosNor();
 }
 
@@ -348,14 +373,10 @@ void Tetrahedron::init() {
 	glBindBuffer(GL_ARRAY_BUFFER, posBufID);
 	glBufferData(GL_ARRAY_BUFFER, posBuf.size() * sizeof(float), &posBuf[0], GL_DYNAMIC_DRAW);
 
-	//glGenBuffers(1, &posBufID);
-	//glBindBuffer(GL_ARRAY_BUFFER, posBufID);
-	//glBufferData(GL_ARRAY_BUFFER, posBuf.size() * sizeof(float), &posBuf[0], GL_DYNAMIC_DRAW);
-
 	/*glGenBuffers(1, &texBufID);
 	glBindBuffer(GL_ARRAY_BUFFER, texBufID);
-	glBufferData(GL_ARRAY_BUFFER, texBuf.size() * sizeof(float), &texBuf[0], GL_STATIC_DRAW);
-*/
+	glBufferData(GL_ARRAY_BUFFER, texBuf.size() * sizeof(float), &texBuf[0], GL_STATIC_DRAW);*/
+
 	glGenBuffers(1, &eleBufID);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, eleBuf.size() * sizeof(unsigned int), &eleBuf[0], GL_STATIC_DRAW);
@@ -382,10 +403,19 @@ void Tetrahedron::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> p) 
 	glBufferData(GL_ARRAY_BUFFER, posBuf.size() * sizeof(float), &posBuf[0], GL_DYNAMIC_DRAW);
 	glVertexAttribPointer(h_pos, 3, GL_FLOAT, GL_FALSE, 0, (const void *)0);
 
+
+	/*int h_nor = p->getAttribute("aNor");
+	glEnableVertexAttribArray(h_nor);
+	glBindBuffer(GL_ARRAY_BUFFER, norBufID);
+	glBufferData(GL_ARRAY_BUFFER, norBuf.size() * sizeof(float), &norBuf[0], GL_DYNAMIC_DRAW);
+	glVertexAttribPointer(h_nor, 3, GL_FLOAT, GL_FALSE, 0, (const void *)0);*/
+
+
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID);
 
 	glDrawElements(GL_TRIANGLES, 12, GL_UNSIGNED_INT, (const void *)(0  * sizeof(unsigned int)));
 	
+	//glDisableVertexAttribArray(h_nor);
 	glDisableVertexAttribArray(h_pos);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
