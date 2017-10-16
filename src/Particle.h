@@ -29,8 +29,11 @@ public:
 	int i;  // starting index
 	Eigen::Vector3d x0; // initial position
 	Eigen::Vector3d v0; // initial velocity
+	Eigen::Vector3d x_old; // x_(n-1)
+	Eigen::Vector3d v_old;
 	Eigen::Vector3d x;  // position
 	Eigen::Vector3d v;  // velocity
+	Eigen::Vector3d normal; 
 	bool fixed;
 	
 private:

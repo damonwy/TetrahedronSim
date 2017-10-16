@@ -164,9 +164,9 @@ Bar::Bar(
 	in.save_poly("barin");
 
 	//in_2.load_ply("icosahedron");
-	//in_2.load_ply("dodecahedron");
+	in_2.load_ply("dodecahedron");
 	//in_2.load_off("octtorus");
-	in_2.load_off("N");
+	//in_2.load_off("N");
 
 	tetrahedralize("pqz", &in_2, &out);
 
@@ -202,16 +202,16 @@ Bar::Bar(
 		int c = out.tetrahedronlist[itet * 4 + 2];
 		int d = out.tetrahedronlist[itet * 4 + 3];
 
-		int ia = (int)3 * a;
+		int ia = 3 * a;
 		xa << out.pointlist[ia], out.pointlist[ia + 1], out.pointlist[ia + 2];
 
-		int ib = (int)3 * b;
+		int ib = 3 * b;
 		xb << out.pointlist[ib], out.pointlist[ib + 1], out.pointlist[ib + 2];
 
-		int ic = (int)3 * c;
+		int ic = 3 * c;
 		xc << out.pointlist[ic], out.pointlist[ic + 1], out.pointlist[ic + 2];
 
-		int id = (int)3 * d;
+		int id = 3 * d;
 		xd << out.pointlist[id], out.pointlist[id + 1], out.pointlist[id + 2];
 
 		// Compute volume and mass of each tet
@@ -410,7 +410,7 @@ void Bar::step(double h, const Vector3d &grav) {
 		dp.col(1) = pc;
 		dp.col(2) = pd;
 		// Compute Deformation Gradient
-		Matrix3d P = dp * (X_invs.block((int)3*itet, 0, 3, 3));
+		Matrix3d P = dp * (X_invs.block(3*itet, 0, 3, 3));
 		
 		Matrix3d I;
 		I.setIdentity();
@@ -498,8 +498,7 @@ void Bar::step(double h, const Vector3d &grav) {
 	VectorXd result = (LHS).ldlt().solve(RHS);
 
 	VectorXd v_new = result;
-	//cout << v_new << endl << endl;
-	//std::cout << v_new << endl << endl;
+	
 	// Compute the strain
 	//Matrix3d strain_m = 0.5 * (du + du.transpose() + du.transpose() * du);
 

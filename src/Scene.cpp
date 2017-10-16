@@ -7,13 +7,14 @@
 #include "Bar.h"
 #include "Shape.h"
 #include "Program.h"
+#include "FemTet.h"
 
 using namespace std;
 using namespace Eigen;
 
 Scene::Scene() :
 	t(0.0),
-	h(1e-3),
+	h(1e-1),
 	grav(0.0, 0.0, 0.0)
 {
 }
@@ -25,17 +26,17 @@ Scene::~Scene()
 void Scene::load(const string &RESOURCE_DIR)
 {
 	// Units: meters, kilograms, seconds
-	h = 5e-2;
+	h = 1e-2;
 	
 	grav << 0.0, -10, 0.0;
 	
 	//int rows = 2;
 	//int cols = 2;
 	double mass = 166.667;
-	double density = 10;
+	double density = 0.1;
 	double height = 12.0;
 	//double stiffness = 1e2;
-	Vector2d damping(0.0, 1.0);
+	Vector2d damping(0.8, 0.8);
 	// Cloth 
 	//Vector3d x00(-0.25, 0.5, 0.0);
 	//Vector3d x01(0.25, 0.5, 0.0);
@@ -47,17 +48,15 @@ void Scene::load(const string &RESOURCE_DIR)
 	//Vector3d x3(0.1, 0.85, -0.05);
 
 	// Tetrahedron
-
 	Vector3d x0(0.0, 5.0, 1.0);
 	Vector3d x1(0.0, 5.0, 0.0);
 	Vector3d x2(1.0, 5.0, 0.0);
 	Vector3d x3(0.0, 6.0, 0.0);
-
-
 	//cloth = make_shared<Cloth>(rows, cols, x00, x01, x10, x11, mass, stiffness, damping);
 	
 	//tet = make_shared<Tetrahedron>(x0, x1, x2, x3, mass, stiffness, damping);
-	bar = make_shared<Bar>(x0, x1, x2, x3, density, height, damping);
+	//bar = make_shared<Bar>(x0, x1, x2, x3, density, height, damping);
+	femtet = make_shared<FemTet>(density, damping);
 	//sphereShape = make_shared<Shape>();
 	//sphereShape->loadMesh(RESOURCE_DIR + "sphere2.obj");
 	
@@ -72,7 +71,8 @@ void Scene::init()
 	//sphereShape->init();
 	//cloth->init();
 	//tet->init();
-	bar->init();
+	//bar->init();
+	femtet->init();
 }
 
 void Scene::tare()
@@ -82,7 +82,7 @@ void Scene::tare()
 	}*/
 	//cloth->tare();
 	//tet->tare();
-	bar->tare();
+	//bar->tare();
 }
 
 void Scene::reset()
@@ -93,7 +93,8 @@ void Scene::reset()
 	}*/
 	//cloth->reset();
 	//tet->reset();
-	bar->reset();
+	//bar->reset();
+	femtet->reset();
 }
 
 void Scene::step()
@@ -114,7 +115,8 @@ void Scene::step()
 	// Simulate the cloth
 	//cloth->step(h, grav, spheres);
 	//tet->step(h, grav);
-	bar->step(h, grav);
+	//bar->step(h, grav);
+	femtet->step(h, grav);
 }
 
 void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) const
@@ -125,5 +127,6 @@ void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) con
 	//}
 	//cloth->draw(MV, prog);
 	//tet->draw(MV, prog);
-	bar->draw(MV, prog);
+	//bar->draw(MV, prog);
+	femtet->draw(MV, prog);
 }

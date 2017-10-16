@@ -16,6 +16,7 @@ class Particle;
 class MatrixStack;
 class Program;
 class Shape;
+class FemTet;
 
 class Scene
 {
@@ -43,7 +44,8 @@ private:
 	std::shared_ptr<Shape> sphereShape;
 	//std::shared_ptr<Cloth> cloth;
 	//std::shared_ptr<Tetrahedron> tet;
-	std::shared_ptr<Bar> bar;
+	//std::shared_ptr<Bar> bar;
+	std::shared_ptr<FemTet> femtet;
 	//std::vector< std::shared_ptr<Particle> > spheres;
 };
 

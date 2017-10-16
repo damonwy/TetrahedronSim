@@ -20,7 +20,10 @@ Particle::Particle() :
 	m(1.0),
 	i(-1),
 	x(0.0, 0.0, 0.0),
+	x_old(0.0, 0.0, 0.0),
 	v(0.0, 0.0, 0.0),
+	v_old(0.0, 0.0, 0.0),
+	normal(0.0,0.0,0.0),
 	fixed(true)
 {
 	
@@ -31,7 +34,10 @@ Particle::Particle(const shared_ptr<Shape> s) :
 	m(1.0),
 	i(-1),
 	x(0.0, 0.0, 0.0),
+	x_old(0.0, 0.0, 0.0),
 	v(0.0, 0.0, 0.0),
+	v_old(0.0, 0.0, 0.0),
+	normal(0.0, 0.0, 0.0),
 	fixed(true),
 	sphere(s)
 {
