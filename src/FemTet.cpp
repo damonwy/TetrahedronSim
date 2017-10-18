@@ -3,6 +3,7 @@
 #include <tetgen.h>
 #include <cmath>        // std::abs
 
+#include "ChronoTimer.h"
 #include "FemTet.h"
 #include "Particle.h"
 #include "Program.h"
@@ -11,6 +12,9 @@
 #include "Spring.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <igl/mosek/mosek_quadprog.h>
+
+
 
 using namespace std;
 using namespace Eigen;
@@ -22,8 +26,8 @@ typedef Eigen::Triplet<double> T;
 #define NEOHOOKEAN 3
 #define LINEAR 4
 
-#define MATERIAL 2
-#define YOUNG 1000
+#define MATERIAL 4
+#define YOUNG 100
 #define POISSON 0.4
 
 FemTet::FemTet(double density, const Eigen::Vector2d &damping)
@@ -43,11 +47,11 @@ FemTet::FemTet(double density, const Eigen::Vector2d &damping)
 	// Load mesh from files
 
 	//in_2.load_off("octtorus");
-	in_2.load_off("A");
+	//in_2.load_off("A");
 	//in_2.load_ply("tetrahedron");
-	//in_2.load_ply("icosahedron");
+	in_2.load_ply("icosahedron");
 	//in_2.load_ply("dodecahedron");
-	//in_2.load_ply("sphere");
+	
 
 	tetrahedralize("pqz", &in_2, &out);
 
@@ -289,6 +293,9 @@ MatrixXd FemTet::hooke(double young, double poisson) {
 
 
 void FemTet::step(double h, const Vector3d &grav) {
+	ChronoTimer timer("test", 1);
+	timer.tic();
+
 	M.setZero();
 	v.setZero();
 	f.setZero();
@@ -310,6 +317,9 @@ void FemTet::step(double h, const Vector3d &grav) {
 		f.segment<3>(3*idx) = mass * grav; // filling f with fg
 		X.segment<3>(3*idx) = particles[i]->x;// filling X with x
 	}
+	cout << "Finishing filling matrices" << endl;
+	timer.toc();
+	timer.print();
 
 	for (int itet = 0; itet < nTets; itet++) {
 		int i = out.tetrahedronlist[itet * 4];
@@ -349,8 +359,11 @@ void FemTet::step(double h, const Vector3d &grav) {
 		f.segment<3>((3 * l)) += (- h1 - h2 - h3);
 
 	}
-
+	cout << "Finishing computing forces" << endl;
+	timer.toc();
+	timer.print();
 	// Compute K matrix and fill the sparse matrix A_
+
 	MatrixXd w(n, n);
 	w.setIdentity();
 	double co = h * h * damping(1);
@@ -417,7 +430,9 @@ void FemTet::step(double h, const Vector3d &grav) {
 		// Filling the ith col of K matrix
 		//K.col(icol) = df;	
 	}
-
+	cout << "Finishing computing K matrix" << endl;
+	timer.toc();
+	timer.print();
 	// Sparse Matrix Version ....
 	
 	Eigen::VectorXd b;
@@ -433,6 +448,11 @@ void FemTet::step(double h, const Vector3d &grav) {
 	cg.setTolerance(1e-3);
 	cg.compute(A);
 	VectorXd v_new = cg.solveWithGuess(b, v);
+	
+	cout << "Finishing computing velocity" << endl;
+
+	timer.toc();
+	timer.print();
 	
 	// Common ....
 	/*MatrixXd LHS(n, n);
@@ -460,13 +480,67 @@ void FemTet::step(double h, const Vector3d &grav) {
 	}
 
 	//Collision Detection with the floor
+	std::vector<int> index_cols; // used for the constraint matrix
+	vector<T> C_; // for constraints
+	int row = 0;
+
+
+	double y_floor = -3.0;
+	Vector3d floor_normal(0.0, 1.0, 0.0);
+
 	for (int i = 0; i < particles.size(); i++) {
-		if (particles[i]->x(1) <= -3 && particles[i]->v(1) < -0.001) {
-			particles[i]->x(1) = -3;
-			particles[i]->v(1) = 0;
+		if (particles[i]->x(1) <= y_floor && particles[i]->v(1) < -0.0001) {
+			//particles[i]->x(1) = y_floor;
+			//particles[i]->v(1) = 0.0;
+
+			// filling the constraint matrix
+			for (int t = 0; t < 3; t++) {
+				C_.push_back(T(row, i + t, floor_normal(t)));
+
+			}
+			row++;
 		}
 	}
+
+	Eigen::SparseMatrix<double> C(row, n);
+	C.setFromTriplets(C_.begin(), C_.end());
+	VectorXd lc = VectorXd::Zero(row); // linear inequality
+	VectorXd uc = VectorXd::Zero(row); // +Inifity
+	VectorXd lx = VectorXd::Zero(n);
+	VectorXd ux = VectorXd::Zero(n);
+	VectorXd cc = -b;
+
+	for (int i = 0; i < n; i++) {
+		lx(i) = -Infinity;
+		ux(i) = +Infinity;
+		uc(i) = +Infinity;
+	}
+
+	VectorXd results;
+	igl::mosek::MosekData mosek_data;
+	bool r = mosek_quadprog(A, cc, 0, C, lc, uc, lx, ux, mosek_data, results);
+
+	// Update velocity
+	for (int i = 0; i < particles.size(); i++) {
+		if (particles[i]->i != -1) {
+			particles[i]->v = results.segment<3>(3 * particles[i]->i);
+		}
+	}
+
+	// Update position
+	for (int i = 0; i < particles.size(); i++) {
+		if (particles[i]->i != -1) {
+			particles[i]->x += particles[i]->v * h;
+		}
+	}
+
+
 	updatePosNor();
+	cout << "Finishing updating velocity and position " << endl;
+	
+	timer.toc();
+	timer.print();
+
 }
 
 void FemTet::init() {
