@@ -8,9 +8,13 @@
 #include "Shape.h"
 #include "Program.h"
 #include "FemTet.h"
+#include "FemNesme.h"
 
 using namespace std;
 using namespace Eigen;
+
+// 1: LINEAR 2: STVK 3: NEOHOOKEAN 4: COROTATED
+#define MODE 3
 
 Scene::Scene() :
 	t(0.0),
@@ -26,7 +30,22 @@ Scene::~Scene()
 void Scene::load(const string &RESOURCE_DIR)
 {
 	// Units: meters, kilograms, seconds
-	h = 1e-2;
+	if (MODE == 1) {
+		h = 1e-2;
+	}
+	else if (MODE == 2) {
+		h = 1e-3;
+	}
+	else if (MODE == 3) {
+		h = 1e-3;
+	}
+	else if (MODE == 4) {
+		h = 1e-4;
+	}
+	else if (MODE == 5) {
+		h = 1e-2;
+	}
+	
 	
 	grav << 0.0, -10, 0.0;
 	
@@ -60,6 +79,8 @@ void Scene::load(const string &RESOURCE_DIR)
 	//sphereShape = make_shared<Shape>();
 	//sphereShape->loadMesh(RESOURCE_DIR + "sphere2.obj");
 	
+	//femNesme = make_shared<FemNesme>(density, damping);
+	
 	//auto sphere = make_shared<Particle>(sphereShape);
 	//spheres.push_back(sphere);
 	//sphere->r = 0.1;
@@ -73,6 +94,7 @@ void Scene::init()
 	//tet->init();
 	//bar->init();
 	femtet->init();
+	//femNesme->init();
 }
 
 void Scene::tare()
@@ -95,6 +117,7 @@ void Scene::reset()
 	//tet->reset();
 	//bar->reset();
 	femtet->reset();
+	//femNesme->reset();
 }
 
 void Scene::step()
@@ -117,6 +140,7 @@ void Scene::step()
 	//tet->step(h, grav);
 	//bar->step(h, grav);
 	femtet->step(h, grav);
+	//femNesme->step(h, grav);
 }
 
 void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) const
@@ -129,4 +153,5 @@ void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) con
 	//tet->draw(MV, prog);
 	//bar->draw(MV, prog);
 	femtet->draw(MV, prog);
+	//femNesme->draw(MV, prog);
 }

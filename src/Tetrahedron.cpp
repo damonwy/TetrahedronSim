@@ -355,15 +355,7 @@ void Tetrahedron::step(double h, const Vector3d &grav) {
 			particles[i]->v(1) = 0;
 		}
 	}
-	
-	
-	
-	
-	
-	
-	
-	
-	
+
 	updatePosNor();
 }
 

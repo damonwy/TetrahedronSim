@@ -20,11 +20,12 @@ Particle::Particle() :
 	m(1.0),
 	i(-1),
 	x(0.0, 0.0, 0.0),
-	x_old(0.0, 0.0, 0.0),
 	v(0.0, 0.0, 0.0),
-	v_old(0.0, 0.0, 0.0),
 	normal(0.0,0.0,0.0),
-	fixed(true)
+	fixed(true),
+	color(0.0, 1.0, 0.0),
+	scale(0.2),
+	alpha(0.5)
 {
 	
 }
@@ -34,12 +35,13 @@ Particle::Particle(const shared_ptr<Shape> s) :
 	m(1.0),
 	i(-1),
 	x(0.0, 0.0, 0.0),
-	x_old(0.0, 0.0, 0.0),
 	v(0.0, 0.0, 0.0),
-	v_old(0.0, 0.0, 0.0),
 	normal(0.0, 0.0, 0.0),
 	fixed(true),
-	sphere(s)
+	sphere(s),
+	color(0.0, 1.0, 0.0),
+	scale(0.2),
+	alpha(0.5)
 {
 	
 }
