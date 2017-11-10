@@ -9,15 +9,16 @@
 #define EIGEN_DONT_ALIGN_STATICALLY
 #include <Eigen/Dense>
 
-//class Tetrahedron;
-//class Cloth;
-class Bar;
+class Tetrahedron;
+class Cloth;
+//class Bar;
 class Particle;
 class MatrixStack;
 class Program;
 class Shape;
 class FemTet;
 class FemNesme;
+class FemSimit;
 
 class Scene
 {
@@ -32,7 +33,6 @@ public:
 	void tare();
 	void reset();
 	void step();
-	
 	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> prog) const;
 	
 	double getTime() const { return t; }
@@ -43,13 +43,14 @@ private:
 	Eigen::Vector3d grav;
 	
 	std::shared_ptr<Shape> sphereShape;
-	//std::shared_ptr<Cloth> cloth;
-	//std::shared_ptr<Tetrahedron> tet;
+	std::shared_ptr<Cloth> cloth;
+	std::shared_ptr<Tetrahedron> tet;
 	//std::shared_ptr<Bar> bar;
 	std::shared_ptr<FemTet> femtet;
 	std::shared_ptr<FemNesme> femNesme;
+	std::shared_ptr<FemSimit> femSimit;
 	
-	//std::vector< std::shared_ptr<Particle> > spheres;
+	std::vector< std::shared_ptr<Particle> > spheres;
 };
 
 #endif

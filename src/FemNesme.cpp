@@ -3,6 +3,9 @@
 #include <iostream>
 #include <tetgen.h>
 #include <cmath>        // std::abs
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <omp.h>
 
 #include "FemNesme.h"
 #include "Particle.h"
@@ -10,10 +13,7 @@
 #include "GLSL.h"
 #include "MatrixStack.h"
 #include "Spring.h"
-#include <omp.h>
 #include "stdlib.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 using namespace std;
 using namespace Eigen;
@@ -25,8 +25,8 @@ FemNesme::FemNesme(
 	assert(density > 0.0);
 
 	this->damping = damping;
-	this->young = 1e3;
-	this->poisson = 0.3;
+	this->young = 1e2;
+	this->poisson = 0.30;
 
 	// Compute Lame coefficients: [mu, lambda]
 	this->mu = young / (2.0 * (1.0 + poisson));
@@ -34,12 +34,12 @@ FemNesme::FemNesme(
 
 	double r = 0.02; // Used for collisions
 
-					//in_2.load_ply("icosahedron");
-					 //in_2.load_ply("dodecahedron");
-					 //in_2.load_off("octtorus");
-					 //in_2.load_off("N");
-					 //in_2.load_ply("bunny");
-	in_2.load_ply("tetrahedron");
+	//in_2.load_ply("icosahedron"); // YOUNG: 1E1 POSSION 0.35
+	//in_2.load_ply("dodecahedron"); // YOUNG: 1E0 POSSION 0.3
+	//in_2.load_off("octtorus");
+	//in_2.load_off("N");
+	//in_2.load_ply("bunny");
+	in_2.load_ply("tetrahedron"); // YOUNG: 1E2 POSSION 0.30
 
 	tetrahedralize("pqz", &in_2, &out);
 
@@ -56,18 +56,19 @@ FemNesme::FemNesme(
 	K.resize(n, n);
 	K.setZero();
 
+	D.resize(6, 6);
+
 	mass.resize(nVerts);
 	mass.setZero();
 
 	volume.resize(nTets);
 	volume.setZero();
 
-	X_invs.resize(3 * nTets, 3);
 	F.resize(n);
-	D.resize(6, 6);
-
-	// Compute tet mass and distribute to vertices
-	std::cout << "Start computing mass and X_inv..." << endl;
+	X0.resize(n);
+	x.resize(n);
+	
+	rotatedRestPosMatrix.resize(4 * nTets, 3);
 
 	for (int itet = 0; itet < nTets; itet++) {
 		Vector3d xa, xb, xc, xd;
@@ -77,74 +78,167 @@ FemNesme::FemNesme(
 		int d = out.tetrahedronlist[itet * 4 + 3];
 
 		int ia = 3 * a;
-		xa << out.pointlist[ia], out.pointlist[ia + 1], out.pointlist[ia + 2];
-
 		int ib = 3 * b;
-		xb << out.pointlist[ib], out.pointlist[ib + 1], out.pointlist[ib + 2];
-
 		int ic = 3 * c;
-		xc << out.pointlist[ic], out.pointlist[ic + 1], out.pointlist[ic + 2];
-
 		int id = 3 * d;
+
+		xa << out.pointlist[ia], out.pointlist[ia + 1], out.pointlist[ia + 2];
+		xb << out.pointlist[ib], out.pointlist[ib + 1], out.pointlist[ib + 2];
+		xc << out.pointlist[ic], out.pointlist[ic + 1], out.pointlist[ic + 2];
 		xd << out.pointlist[id], out.pointlist[id + 1], out.pointlist[id + 2];
 
-		// Compute volume and mass of each tet
 		double vol = abs((xa - xd).transpose()*(xb - xd).cross(xc - xd)) / 6.0;
 		volume(itet) = vol;
 
 		double m = vol * density;
 
-		// Distribute 1/4 mass to each vertices
 		mass(a) += m / 4;
 		mass(b) += m / 4;
 		mass(c) += m / 4;
 		mass(d) += m / 4;
-
-		// Precompute X_inv, constant throughout the simulation
-		MatrixXd _X_inv(3, 3);
-		_X_inv.col(0) = xb - xa;
-		_X_inv.col(1) = xc - xa;
-		_X_inv.col(2) = xd - xa;
-		X_invs.block(itet * 3, 0, 3, 3) = _X_inv.inverse();
-
 	}
 
 	// Create particles
-	std::cout << "Start creating particles..." << endl;
 	for (int i = 0; i < nVerts; i++) {
 		auto p = make_shared<Particle>();
 		particles.push_back(p);
 		p->r = r;
-		// Init postion
 		p->x0 << out.pointlist[3 * i], out.pointlist[3 * i + 1], out.pointlist[3 * i + 2];
+		X0.segment<3>(3 * i) = p->x0;
 		p->x = p->x0;
-		// Init velocity
 		p->v0 << 0.0, 0.0, 0.0;
 		p->v = p->v0;
-		// Init mass
 		p->m = mass(i);
 		p->i = i;
 		p->fixed = false;
 	}
 
-	D = computeD(lambda, mu);
+	computeD(D, lambda, mu);
 
-	// Build vertex buffers
+	for (int itet = 0; itet < nTets; itet++) {
+
+		int a = out.tetrahedronlist[itet * 4 + 0];
+		int b = out.tetrahedronlist[itet * 4 + 1];
+		int c = out.tetrahedronlist[itet * 4 + 2];
+		int d = out.tetrahedronlist[itet * 4 + 3];
+
+		Matrix3d R_rest;
+		computeQR(R_rest, X0, a, b, c);
+		cout << R_rest << endl;
+
+		MatrixXd rotatedRestPos(4, 3);
+		rotatedRestPos.row(0).setZero(); //a
+		rotatedRestPos.row(1) = R_rest * X0.segment<3>(3*b) - R_rest * X0.segment<3>(3*a);
+		rotatedRestPos.row(2) = R_rest * X0.segment<3>(3*c) - R_rest * X0.segment<3>(3*a);
+		rotatedRestPos.row(3) = R_rest * X0.segment<3>(3*d) - R_rest * X0.segment<3>(3*a);
+
+		rotatedRestPosMatrix.block<4, 3>(4 * itet, 0) = rotatedRestPos;
+
+		cout << rotatedRestPos << endl;
+
+		//MatrixXd B_rest(6, 12);
+		//computeB(B_rest, volume, itet, rotatedRestPos.row(0), rotatedRestPos.row(1), rotatedRestPos.row(2), rotatedRestPos.row(3));
+
+		Matrix3d Rot;
+		Rot.setIdentity();
+
+		//MatrixXd BtDB(12,12);
+		//computeK(BtDB, B_rest, Rot);
+	
+	}
 	posBuf.clear();
 	norBuf.clear();
 	texBuf.clear();
 	eleBuf.clear();
-	posBuf.resize(nVerts * 3);
-	norBuf.resize(nVerts * 3);
+	posBuf.resize(nTriFaces * 9);
+	norBuf.resize(nTriFaces * 9);
 	eleBuf.resize(nTriFaces * 3);
 	updatePosNor();
-
-	for (int i = 0; i <nTriFaces; i++) {
-		eleBuf[3 * i] = out.trifacelist[3 * i];
-		eleBuf[3 * i + 1] = out.trifacelist[3 * i + 1];
-		eleBuf[3 * i + 2] = out.trifacelist[3 * i + 2];
+	
+	for (int i = 0; i < nTriFaces; i++) {
+		eleBuf[3 * i + 0] = 3 * i;
+		eleBuf[3 * i + 1] = 3 * i + 1;
+		eleBuf[3 * i + 2] = 3 * i + 2;
 	}
 
+}
+
+void FemNesme::computeQR(Matrix3d &rotation, const VectorXd &x, const int &a, const int &b, const int &c) {
+	Vector3d xa = x.segment<3>(3 * a);
+	Vector3d xb = x.segment<3>(3 * b);
+	Vector3d xc = x.segment<3>(3 * c);
+	Vector3d axis_x = xb - xa;
+	axis_x.normalize();
+
+	Vector3d axis_y = xc - xa;
+	axis_y.normalize();
+
+	Vector3d axis_z = axis_x.cross(axis_y);
+	axis_z.normalize();
+
+	axis_y = axis_z.cross(axis_x);
+	axis_y.normalize();
+
+	rotation.row(0) = axis_x;
+	rotation.row(1) = axis_y;
+	rotation.row(2) = axis_z;
+}
+
+void FemNesme::computeB(MatrixXd &Bmatrix, VectorXd volume, int itet, Vector3d rotated_a, Vector3d rotated_b, Vector3d rotated_c, Vector3d rotated_d) {
+	// Compute the coefficients of the shape functions N = alpha + beta *x + gamma * y + delta * z (for B, we don't need alpha)
+	// In the local frame!!!
+	double yc = rotated_c(1);
+	double xb = rotated_b(0);
+	double xc = rotated_c(0);
+	double zd = rotated_d(2);
+	double xd = rotated_d(0);
+	double yd = rotated_d(1);
+
+	// For a
+	double beta_a = - yc * zd;
+	double gamma_a = (xc * zd) - (xb * zd);
+	double delta_a = yc * xd - xc * yd + xb * yd - xb * yc;
+
+	// For b
+	double beta_b = yc * zd;
+	double gamma_b = -xc * zd;
+	double delta_b = -yc * xd + xc * yd;
+
+	// For c
+	double beta_c = 0;
+	double gamma_c = zd * xb;
+	double delta_c = -yd * xb;
+
+	// For d
+	double beta_d = 0;
+	double gamma_d = 0;
+	double delta_d = xb * yc;
+
+	Bmatrix.resize(6, 12);
+	Bmatrix.setZero();
+	Bmatrix << beta_a,       0,       0,  beta_b,       0,       0,  beta_c,       0,       0,  beta_d,       0,       0,
+			        0, gamma_a,       0,       0, gamma_b,       0,       0, gamma_c,       0,       0, gamma_d,       0,
+		            0,       0, delta_a,       0,       0, delta_b,       0,       0, delta_c,       0,       0, delta_d,
+		      gamma_a,  beta_a,       0, gamma_b,  beta_b,       0, gamma_c,  beta_c,       0, gamma_d,  beta_d,       0,
+		            0, delta_a, gamma_a,       0, delta_b, gamma_b,       0, delta_c, gamma_c,       0, delta_d, gamma_d,
+		      delta_a,       0,  beta_a, delta_b,       0,  beta_b, delta_c,       0,  beta_c, delta_d,       0,  beta_d;
+
+	Bmatrix = 1.0 / 6.0 / volume(itet) * Bmatrix;
+}
+
+void FemNesme::computeK(MatrixXd &Kmatrix, MatrixXd &KRtmatrix, MatrixXd Bmatrix, Matrix3d Rot) {
+	MatrixXd Bt = Bmatrix.transpose();
+	MatrixXd BtDB = Bt * D * Bmatrix;
+	MatrixXd RR(12, 12);
+	MatrixXd RRt(12, 12);
+
+	RR.setZero();
+	for (int i = 0; i < 4; i++) {
+		RR.block<3, 3>(3 * i, 3 * i) = Rot;
+	}
+	RRt = RR.transpose();
+	Kmatrix = RR*BtDB ;
+	KRtmatrix = Kmatrix *RRt;
 }
 
 void FemNesme::step(double h, const Vector3d &grav) {
@@ -152,6 +246,7 @@ void FemNesme::step(double h, const Vector3d &grav) {
 	v.setZero();
 	F.setZero();
 	K.setZero();
+	x.setZero();
 
 	for (int i = 0; i < particles.size(); i++) {
 		int idx = particles[i]->i;
@@ -160,9 +255,10 @@ void FemNesme::step(double h, const Vector3d &grav) {
 		Matrix3d A;
 		A.setIdentity();
 		A *= mass;
-		M.block<3, 3>(3 * idx, 3 * idx) = A; // filling M
-		v.segment<3>(3 * idx) = particles[i]->v; // filling v 
-		F.segment<3>(3 * idx) = mass * grav; // filling f with fg
+		M.block<3, 3>(3 * idx, 3 * idx) = A; 
+		v.segment<3>(3 * idx) = particles[i]->v;
+		x.segment<3>(3 * idx) = particles[i]->x;
+		F.segment<3>(3 * idx) = mass * grav; 
 	}
 
 	for (int itet = 0; itet < nTets; itet++) {
@@ -171,195 +267,62 @@ void FemNesme::step(double h, const Vector3d &grav) {
 		int c = out.tetrahedronlist[itet * 4 + 2];
 		int d = out.tetrahedronlist[itet * 4 + 3];
 
-		MatrixXd dp(3, 3);
-		Vector3d pb = particles[b]->x - particles[a]->x;
-		Vector3d pc = particles[c]->x - particles[a]->x;
-		Vector3d pd = particles[d]->x - particles[a]->x;
-		dp.col(0) = pb;
-		dp.col(1) = pc;
-		dp.col(2) = pd;
-		cout << "dp:" << dp << endl;
+		Matrix3d R_def;
+		computeQR(R_def, x, a, b, c);
+		cout << "R_def: " << R_def << endl << endl;
 
-		// Compute Deformation Gradient
-		Matrix3d P = (X_invs.block(3 * itet, 0, 3, 3)) *dp ;
-		//cout << P << endl;
+		MatrixXd rotatedCurrentPos(4, 3);
+		rotatedCurrentPos.row(0).setZero(); //a
+		rotatedCurrentPos.row(1) = R_def * x.segment<3>(3 * b) - R_def * x.segment<3>(3 * a);
+		rotatedCurrentPos.row(2) = R_def * x.segment<3>(3 * c) - R_def * x.segment<3>(3 * a);
+		rotatedCurrentPos.row(3) = R_def * x.segment<3>(3 * d) - R_def * x.segment<3>(3 * a);
 
-		// Compute R and Re using QR decomposition (Gram-Schmidt orthogonalization)
+		cout << "rotatedCurrentPos: " << rotatedCurrentPos << endl << endl;
 
-		Vector3d r0 = P.col(0);
-		Vector3d r1 = P.col(1);
-		r0 = r0.normalized();
-		Vector3d r2 = r0.cross(r1);
-		r2.normalized();
-		r1 = r2.cross(r0);
-		r1 = r1.normalized();
+		MatrixXd B_def(6, 12);
+		computeB(B_def, volume, itet, rotatedCurrentPos.row(0), rotatedCurrentPos.row(1), rotatedCurrentPos.row(2), rotatedCurrentPos.row(3));
 
-		Matrix3d R;
-		R.col(0) = r0;
-		R.col(1) = r1;
-		R.col(2) = r2;
-		//cout << "Rotation Matrix"<<endl<< R << endl;
-		cout << "M:"<<M << endl;
-		// Compute matrix Re
-		MatrixXd Re(12, 12);
-		Re.setZero();
+		MatrixXd RtBtDB, RtBtDBR;
+		computeK(RtBtDB, RtBtDBR, B_def, R_def.transpose());
+		
+
+		VectorXd disp(12);
+		disp.setZero();
+	
+		disp.segment<3>(3) = rotatedCurrentPos.row(1) - rotatedRestPosMatrix.row(4 * itet + 1);
+		disp.segment<3>(6) = rotatedCurrentPos.row(2) - rotatedRestPosMatrix.row(4 * itet + 2);
+		disp.segment<3>(9) = rotatedCurrentPos.row(3) - rotatedRestPosMatrix.row(4 * itet + 3);
+
+		MatrixXd RR(12, 12);
+		MatrixXd RRt(12, 12);
+
+		RR.setZero();
 		for (int i = 0; i < 4; i++) {
-			Re.block<3, 3>(3 * i, 3 * i) = R;
+			RR.block<3, 3>(3 * i, 3 * i) = R_def;
 		}
+		RRt = RR.transpose();
+		VectorXd Fe =  B_def.transpose() * D * B_def * disp;
+		//VectorXd Fe = RtBtDB * disp;
 
-		cout << "R" << R << endl<<endl;
-		Matrix3d I;
-		I.setIdentity();
-
-		// Deformation matrix
-		Matrix3d Ee;
-		Ee = R.transpose() * P;
-		cout << "E:" << endl << Ee << endl;
-
-		VectorXd XX(12);
-		XX.setZero();
-		XX.segment<3>(0) = particles[a]->x0;
-		XX.segment<3>(3) = particles[b]->x0;
-		XX.segment<3>(6) = particles[c]->x0;
-		XX.segment<3>(9) = particles[d]->x0 ;
-
-		// Fill the initial position x0 to vector xx
-		VectorXd xx(12);
-		xx.setZero();
-		xx.segment<3>(0) = particles[a]->x;
-		xx.segment<3>(3) = particles[b]->x;
-		xx.segment<3>(6) = particles[c]->x;
-		xx.segment<3>(9) = particles[d]->x;
-
-		VectorXd deformed = Re.transpose() * xx;
-		//cout << "deformed pos:" << endl << deformed << endl << endl;
-		VectorXd deformed_local = deformed;
-		//deformed_local.segment<3>(3) -= deformed_local.segment<3>(0);
-		//deformed_local.segment<3>(6) -= deformed_local.segment<3>(0);
-		//deformed_local.segment<3>(9) -= deformed_local.segment<3>(0);
-		//deformed_local.segment<3>(0) -= deformed_local.segment<3>(0);
-
-		VectorXd rest_local = XX;
-		//rest_local.segment<3>(3) -= rest_local.segment<3>(0);
-		//rest_local.segment<3>(6) -= rest_local.segment<3>(0);
-		//rest_local.segment<3>(9) -= rest_local.segment<3>(0);
-		//rest_local.segment<3>(0) -= rest_local.segment<3>(0);
-
-		VectorXd displaced = deformed_local - rest_local;
-		//cout << "disp: " << endl << displaced << endl;
-
-		//cout << "Rotation Matrix"<<endl<< R << endl;
-		// Compute matrix Re
-		//MatrixXd Re(12, 12);
-		//Re.setZero();
-		// Filling Re
-		//for (int i = 0; i < 4; i++) {
-		//	Re.block<3, 3>(3 * i, 3 * i) = R;
-		//}
-
-		// Compute the coefficients of the shape functions N = alpha + beta *x + gamma * y + delta * z (for B, we don't need alpha)
-		// In the local frame!!!
-		double yc = pc(1);
-		double xb = pb(0);
-		double xc = pc(0);
-		double zd = pd(2);
-		double xd = pd(0);
-		double yd = pd(1);
-
-		//cout << yc << endl;
-		// For a
-		double beta_a = -yc * zd;
-		double gamma_a = (xc * zd) - (xb * zd);
-		double delta_a = yc * xd - xc * yd + xb * yd - xb * yc;
-
-		// For b
-		double beta_b = yc * zd;
-		double gamma_b = -xc * zd;
-		double delta_b = -yc * xd + xc * yd;
-
-		// For c
-		double beta_c = 0;
-		double gamma_c = zd * xb;
-		double delta_c = -yd * xb;
-
-		// For d
-		double beta_d = 0;
-		double gamma_d = 0;
-		double delta_d = xb * yc;
-
-		// Fill the strain-displacement matrix Be
-
-		MatrixXd Be(6, 12);
-		Be.setZero();
-		Be << beta_a, 0, 0, beta_b, 0, 0, beta_c, 0, 0, beta_d, 0, 0,
-			0, gamma_a, 0, 0, gamma_b, 0, 0, gamma_c, 0, 0, gamma_d, 0,
-			0, 0, delta_a, 0, 0, delta_b, 0, 0, delta_c, 0, 0, delta_d,
-			gamma_a, beta_a, 0, gamma_b, beta_b, 0, gamma_c, beta_c, 0, gamma_d, beta_d, 0,
-			0, delta_a, gamma_a, 0, delta_b, gamma_b, 0, delta_c, gamma_c, 0, delta_d, gamma_d,
-			delta_a, 0, beta_a, delta_b, 0, beta_b, delta_c, 0, beta_c, delta_d, 0, beta_d;
-
-		Be = 1.0 / 6.0 / volume(itet) * Be;
-		cout << "StrainDisplacement Be:" << endl << Be << endl << endl;
-		// cout << Be << endl;
-		MatrixXd Ke(12, 6);
-
-		Ke = Be.transpose() * D * Be;
-		cout << "Stiffness Ke:" << endl << Ke << endl << endl;
-
-
-		K.block(3 * a, 3 * a, 3, 3) += Ke.block(0, 0, 3, 3);
-		K.block(3 * b, 3 * b, 3, 3) += Ke.block(3, 3, 3, 3);
-		K.block(3 * c, 3 * c, 3, 3) += Ke.block(6, 6, 3, 3);
-		K.block(3 * d, 3 * d, 3, 3) += Ke.block(9, 9, 3, 3);
-		K.block(3 * a, 3 * b, 3, 3) += Ke.block(0, 3, 3, 3);
-		K.block(3 * a, 3 * c, 3, 3) += Ke.block(0, 6, 3, 3);
-		K.block(3 * a, 3 * d, 3, 3) += Ke.block(0, 9, 3, 3);
-		K.block(3 * b, 3 * a, 3, 3) += Ke.block(3, 0, 3, 3);
-		K.block(3 * b, 3 * c, 3, 3) += Ke.block(3, 6, 3, 3);
-		K.block(3 * b, 3 * d, 3, 3) += Ke.block(3, 9, 3, 3);
-		K.block(3 * c, 3 * a, 3, 3) += Ke.block(6, 0, 3, 3);
-		K.block(3 * c, 3 * b, 3, 3) += Ke.block(6, 3, 3, 3);
-		K.block(3 * c, 3 * d, 3, 3) += Ke.block(6, 9, 3, 3);
-		K.block(3 * d, 3 * a, 3, 3) += Ke.block(9, 0, 3, 3);
-		K.block(3 * d, 3 * b, 3, 3) += Ke.block(9, 3, 3, 3);
-		K.block(3 * d, 3 * c, 3, 3) += Ke.block(9, 6, 3, 3);
-
-		// Compute force Fe
+		//cout << "Displacement disp: " << endl << disp << endl << endl;
+		//cout << "StrainDisplacement Be: " << endl << B_def << endl << endl;	
+		//cout << "Stiffness Ke: " << endl << RtBtDB << endl << endl;
+		//cout << "Forces: " << endl << Fe << endl << endl;
 		
-		VectorXd XXX(12);
-		XXX.setZero();
-		XXX.segment<3>(0) = particles[a]->x0;
-		XXX.segment<3>(3) = particles[b]->x0;
-		XXX.segment<3>(6) = particles[c]->x0;
-		XXX.segment<3>(9) = particles[d]->x0;
-
-		VectorXd xxx(12);
-		xxx.setZero();
-		xxx.segment<3>(0) = particles[a]->x;
-		xxx.segment<3>(3) = particles[b]->x;
-		xxx.segment<3>(6) = particles[c]->x;
-		xxx.segment<3>(9) = particles[d]->x;
-
-		VectorXd Fe = Re * Ke * displaced;
-
-		cout << "Forces:" << endl << Fe << endl << endl;
-		// Fill the forces fe to vector F
 		//F.segment<3>((3 * a)) -= Fe.segment<3>(3) + Fe.segment<3>(6) + Fe.segment<3>(9);
-		F.segment<3>((3 * a)) += Fe.segment<3>(0);//a = 0
-		
-		F.segment<3>((3 * b)) += Fe.segment<3>(3);//b=3
-		F.segment<3>((3 * c)) += Fe.segment<3>(6);//c=2
-		F.segment<3>((3 * d)) += Fe.segment<3>(9);//d=1
+		F.segment<3>((3 * a)) += -R_def.transpose()*Fe.segment<3>(0);//a = 0
+		F.segment<3>((3 * b)) += -R_def.transpose()*Fe.segment<3>(3);//b=3
+		F.segment<3>((3 * c)) += -R_def.transpose()*Fe.segment<3>(6);//c=2
+		F.segment<3>((3 * d)) += -R_def.transpose()*Fe.segment<3>(9);//d=1
 	}
+	
 	//cout << "Forces "<< F << endl << endl;
 
 	MatrixXd LHS(n, n);
 	LHS.setZero();
 
 	double damping = 0.9;
-
-	LHS = M + h*damping*M - h*h*damping*K;
-
+	LHS = M + h*damping*M;
 	VectorXd RHS(n);
 	RHS.setZero();
 	RHS = M * v + h * F ;
@@ -373,7 +336,7 @@ void FemNesme::step(double h, const Vector3d &grav) {
 	for (int i = 0; i < particles.size(); i++) {
 		if (particles[i]->i != -1) {
 			particles[i]->v = v_new.segment<3>(3 * particles[i]->i);
-			cout << "v_" << particles[i]->i << endl << particles[i]->v << endl;
+			//cout << "v_" << particles[i]->i << endl << particles[i]->v << endl;
 		}
 	}
 
@@ -381,16 +344,16 @@ void FemNesme::step(double h, const Vector3d &grav) {
 	for (int i = 0; i < particles.size(); i++) {
 		if (particles[i]->i != -1) {
 			particles[i]->x += particles[i]->v * h;
-			cout << "x_" << i << endl << particles[i]->x << endl;
 		}
 	}
 
 	//Collision Detection with the floor
 	for (int i = 0; i < particles.size(); i++) {
-		if (particles[i]->x(1) <= -2 && particles[i]->v(1) < -0.001) {
-			particles[i]->x(1) = -1.99;
+		if (particles[i]->x(1) <= -2.0 && particles[i]->v(1) < -0.00001) {
+			particles[i]->x(1) = -2.0;
 			particles[i]->v(1) = 0.0;
 		}
+		//cout << "x_" << i << endl << particles[i]->x << endl;
 	}
 	updatePosNor();
 }
@@ -461,53 +424,40 @@ void FemNesme::reset() {
 
 void FemNesme::updatePosNor()
 {
-	// Position
-	for (int i = 0; i < (int)particles.size(); i++) {
-		Vector3d x = particles[i]->x;
-		posBuf[3 * i + 0] = x(0);
-		posBuf[3 * i + 1] = x(1);
-		posBuf[3 * i + 2] = x(2);
-	}
-
-	// Normal
 	for (int iface = 0; iface < nTriFaces; iface++) {
-		Vector3d p1 = particles[out.trifacelist[3 * iface]]->x;
+		Vector3d p1 = particles[out.trifacelist[3 * iface + 0]]->x;
 		Vector3d p2 = particles[out.trifacelist[3 * iface + 1]]->x;
 		Vector3d p3 = particles[out.trifacelist[3 * iface + 2]]->x;
 
+		//Position
 		Vector3d e1 = p2 - p1;
 		Vector3d e2 = p3 - p1;
 		Vector3d normal = e1.cross(e2);
+		normal.normalize();
 
-		particles[out.trifacelist[3 * iface]]->normal += normal;
-		particles[out.trifacelist[3 * iface + 1]]->normal += normal;
-		particles[out.trifacelist[3 * iface + 2]]->normal += normal;
+		for (int idx = 0; idx < 3; idx++) {
+			posBuf[9 * iface + 0 + idx] = p1(idx);
+			posBuf[9 * iface + 3 + idx] = p2(idx);
+			posBuf[9 * iface + 6 + idx] = p3(idx);
+			norBuf[9 * iface + 0 + idx] = normal(idx);
+			norBuf[9 * iface + 3 + idx] = normal(idx);
+			norBuf[9 * iface + 6 + idx] = normal(idx);
+		}
 	}
-
-	for (int ipt = 0; ipt < particles.size(); ipt++) {
-		Vector3d nor = particles[ipt]->normal;
-		nor.normalize();
-		norBuf[3 * ipt + 0] = nor(0);
-		norBuf[3 * ipt + 1] = nor(1);
-		norBuf[3 * ipt + 2] = nor(2);
-	}
-
 }
 
-MatrixXd FemNesme::computeD(double lambda, double mu) {
+void FemNesme::computeD(MatrixXd &Dmatrix, double lambda, double mu) {
 	double v = lambda;
 	double v1 = 1 + 2.0 * mu;
 	double v2 = mu;
 
-	MatrixXd D(6, 6);
-	D <<
+	Dmatrix <<
 		v1, v, v, 0, 0, 0,
 		v, v1, v, 0, 0, 0,
 		v, v, v1, 0, 0, 0,
 		0, 0, 0, v2, 0, 0,
 		0, 0, 0, 0, v2, 0,
 		0, 0, 0, 0, 0, v2;
-	return D;
 }
 
 FemNesme::~FemNesme()

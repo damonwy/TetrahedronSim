@@ -2,19 +2,23 @@
 
 #include "Scene.h"
 #include "Particle.h"
-//#include "Cloth.h"
-//#include "Tetrahedron.h"
-#include "Bar.h"
+#include "Cloth.h"
+#include "Tetrahedron.h"
+//#include "Bar.h"
 #include "Shape.h"
 #include "Program.h"
 #include "FemTet.h"
 #include "FemNesme.h"
+#include "FemSimit.h"
 
 using namespace std;
 using namespace Eigen;
 
 // 1: LINEAR 2: STVK 3: NEOHOOKEAN 4: COROTATED
-#define MODE 3
+#define MODE 1
+
+// 10: FemTet 11: FemNesme 12: FemSimit
+#define MODEL 11
 
 Scene::Scene() :
 	t(0.0),
@@ -46,45 +50,58 @@ void Scene::load(const string &RESOURCE_DIR)
 		h = 1e-2;
 	}
 	
-	
 	grav << 0.0, -10, 0.0;
-	
-	//int rows = 2;
-	//int cols = 2;
 	double mass = 166.667;
 	double density = 0.1;
 	double height = 12.0;
-	//double stiffness = 1e2;
+	
 	Vector2d damping(0.8, 0.8);
-	// Cloth 
-	//Vector3d x00(-0.25, 0.5, 0.0);
-	//Vector3d x01(0.25, 0.5, 0.0);
-	//Vector3d x10(-0.25, 0.5, -0.5);
-	//Vector3d x11(0.25, 0.5, -0.5);
-	//Vector3d x0(0.0, 0.95, -0.05);
-	//Vector3d x1(-0.1, 0.85, -0.05);
-	//Vector3d x2(0.0, 0.9, 0.0);
-	//Vector3d x3(0.1, 0.85, -0.05);
 
-	// Tetrahedron
-	Vector3d x0(0.0, 5.0, 1.0);
-	Vector3d x1(0.0, 5.0, 0.0);
-	Vector3d x2(1.0, 5.0, 0.0);
-	Vector3d x3(0.0, 6.0, 0.0);
-	//cloth = make_shared<Cloth>(rows, cols, x00, x01, x10, x11, mass, stiffness, damping);
-	
-	//tet = make_shared<Tetrahedron>(x0, x1, x2, x3, mass, stiffness, damping);
-	//bar = make_shared<Bar>(x0, x1, x2, x3, density, height, damping);
-	femtet = make_shared<FemTet>(density, damping);
-	//sphereShape = make_shared<Shape>();
-	//sphereShape->loadMesh(RESOURCE_DIR + "sphere2.obj");
-	
-	//femNesme = make_shared<FemNesme>(density, damping);
-	
-	//auto sphere = make_shared<Particle>(sphereShape);
-	//spheres.push_back(sphere);
-	//sphere->r = 0.1;
-	//sphere->x = Vector3d(0.0, 0.2, 0.0);
+	if (MODEL == 10) {
+		femtet = make_shared<FemTet>(density, damping);
+	}
+	if (MODEL == 11) {
+		femNesme = make_shared<FemNesme>(density, damping);
+	}
+	if (MODEL == 12) {
+		femSimit = make_shared<FemSimit>(density, damping);
+	}
+	if (MODEL == 13) {
+		int rows = 2;
+		int cols = 2;
+		double stiffness = 1e2;
+		Vector3d x00(-0.25, 0.5, 0.0);
+		Vector3d x01(0.25, 0.5, 0.0);
+		Vector3d x10(-0.25, 0.5, -0.5);
+		Vector3d x11(0.25, 0.5, -0.5);
+		Vector3d x0(0.0, 0.95, -0.05);
+		Vector3d x1(-0.1, 0.85, -0.05);
+		Vector3d x2(0.0, 0.9, 0.0);
+		Vector3d x3(0.1, 0.85, -0.05);
+		cloth = make_shared<Cloth>(rows, cols, x00, x01, x10, x11, mass, stiffness, damping);
+		sphereShape = make_shared<Shape>();
+		sphereShape->loadMesh(RESOURCE_DIR + "sphere2.obj");
+		auto sphere = make_shared<Particle>(sphereShape);
+		spheres.push_back(sphere);
+		sphere->r = 0.1;
+		sphere->x = Vector3d(0.0, 0.2, 0.0);
+	}
+	if (MODEL == 14) {
+		Vector3d x0(0.0, 5.0, 1.0);
+		Vector3d x1(0.0, 5.0, 0.0);
+		Vector3d x2(1.0, 5.0, 0.0);
+		Vector3d x3(0.0, 6.0, 0.0);
+		double stiffness = 1e2;
+		tet = make_shared<Tetrahedron>(x0, x1, x2, x3, mass, stiffness, damping);
+
+	}
+	if (MODEL == 15) {
+		Vector3d x0(0.0, 5.0, 1.0);
+		Vector3d x1(0.0, 5.0, 0.0);
+		Vector3d x2(1.0, 5.0, 0.0);
+		Vector3d x3(0.0, 6.0, 0.0);
+		//bar = make_shared<Bar>(x0, x1, x2, x3, density, height, damping);
+	}
 }
 
 void Scene::init()
@@ -93,8 +110,17 @@ void Scene::init()
 	//cloth->init();
 	//tet->init();
 	//bar->init();
-	femtet->init();
-	//femNesme->init();
+	
+	if (MODEL == 10) {
+		femtet->init();
+	}
+	if (MODEL == 11) {
+		femNesme->init();
+	}
+	if (MODEL == 12) {
+		femSimit->init();
+	}
+	
 }
 
 void Scene::tare()
@@ -116,8 +142,9 @@ void Scene::reset()
 	//cloth->reset();
 	//tet->reset();
 	//bar->reset();
-	femtet->reset();
+	//femtet->reset();
 	//femNesme->reset();
+
 }
 
 void Scene::step()
@@ -139,8 +166,17 @@ void Scene::step()
 	//cloth->step(h, grav, spheres);
 	//tet->step(h, grav);
 	//bar->step(h, grav);
-	femtet->step(h, grav);
-	//femNesme->step(h, grav);
+
+	if (MODEL == 10) {
+		femtet->step(h, grav);
+	}
+	if (MODEL == 11) {
+		femNesme->step(h, grav);
+	}
+	if (MODEL == 12) {
+		femSimit->step(h, grav);
+	}
+
 }
 
 void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) const
@@ -152,6 +188,16 @@ void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) con
 	//cloth->draw(MV, prog);
 	//tet->draw(MV, prog);
 	//bar->draw(MV, prog);
-	femtet->draw(MV, prog);
+	//femtet->draw(MV, prog);
 	//femNesme->draw(MV, prog);
+
+	if (MODEL == 10) {
+		femtet->draw(MV, prog);
+	}
+	if (MODEL == 11) {
+		femNesme->draw(MV, prog);
+	}
+	if (MODEL == 12) {
+		femSimit->draw(MV, prog);
+	}
 }

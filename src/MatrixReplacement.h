@@ -38,6 +38,9 @@ public:
 	void attachMyMatrix(const SparseMatrix<double> &mat) {
 		mp_mat = &mat;
 	}
+
+
+
 	const SparseMatrix<double> my_matrix() const { return *mp_mat; }
 private:
 	const SparseMatrix<double> *mp_mat;

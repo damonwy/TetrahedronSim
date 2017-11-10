@@ -159,13 +159,10 @@ FemTet::FemTet(double density, const Eigen::Vector2d &damping)
 		auto p = make_shared<Particle>();
 		particles.push_back(p);
 		p->r = r;
-		// Init postion
 		p->x0 << out.pointlist[3 * i], out.pointlist[3 * i + 1], out.pointlist[3 * i + 2];
 		p->x = p->x0;
-		// Init velocity
 		p->v0 << 0.0, 0.0, 0.0;
 		p->v = p->v0;
-		// Init mass
 		p->m = mass(i);
 		p->i = i;
 		p->fixed = false;
@@ -185,13 +182,9 @@ FemTet::FemTet(double density, const Eigen::Vector2d &damping)
 	updatePosNor();
 
 	for (int i = 0; i < nTriFaces; i++) {
-		//eleBuf[3 * i] = out.trifacelist[3 * i];
-		//eleBuf[3 * i + 1] = out.trifacelist[3 * i + 1];
-		//eleBuf[3 * i + 2] = out.trifacelist[3 * i + 2];
 		eleBuf[3 * i + 0] = 3 * i;
 		eleBuf[3 * i + 1] = 3 * i + 1;
 		eleBuf[3 * i + 2] = 3 * i + 2;
-
 	}
 }
 
@@ -355,7 +348,6 @@ void FemTet::step(double h, const Vector3d &grav) {
 			A_.push_back(T(3 * i + j, 3 * i + j, mass + h * damping(0) * mass));
 		}		
 	}
-	
 
 	//cout << "Finishing filling matrices" << endl;
 	//timer.toc();
