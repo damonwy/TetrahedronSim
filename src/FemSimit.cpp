@@ -422,7 +422,6 @@ void FemSimit::step(double h, const Vector3d &grav) {
 		}
 		updatePosNor();
 	}
-
 }
 
 void FemSimit::init() {

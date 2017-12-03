@@ -15,19 +15,21 @@
 
 using namespace std;
 
+
+
 Particle::Particle() :
 	r(1.0),
 	m(1.0),
 	i(-1),
 	x(0.0, 0.0, 0.0),
 	v(0.0, 0.0, 0.0),
-	normal(0.0,0.0,0.0),
+	normal(0.0, 0.0, 0.0),
 	fixed(true),
 	color(0.0, 1.0, 0.0),
 	scale(0.2),
 	alpha(0.5)
 {
-	
+
 }
 
 Particle::Particle(const shared_ptr<Shape> s) :
@@ -43,7 +45,7 @@ Particle::Particle(const shared_ptr<Shape> s) :
 	scale(0.2),
 	alpha(0.5)
 {
-	
+
 }
 
 Particle::~Particle()
@@ -64,7 +66,7 @@ void Particle::reset()
 
 void Particle::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) const
 {
-	if(sphere) {
+	if (sphere) {
 		MV->pushMatrix();
 		MV->translate(x(0), x(1), x(2));
 		MV->scale(r);

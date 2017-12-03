@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <iostream>
 #include <vector>
+#include <time.h>
 
 #ifndef _GLIBCXX_USE_NANOSLEEP
 #define _GLIBCXX_USE_NANOSLEEP
@@ -24,10 +25,13 @@
 #include "Shape.h"
 #include "Scene.h"
 
+#define RIGID_BODY  0
+#define FLOOR		0
+
 using namespace std;
 using namespace Eigen;
 
-bool keyToggles[256] = {false}; // only for English keyboards!
+bool keyToggles[256] = { false }; // only for English keyboards!
 
 GLFWwindow *window; // Main application window
 string RESOURCE_DIR = ""; // Where the resources are loaded from
@@ -44,7 +48,7 @@ static void error_callback(int error, const char *description)
 
 static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
-	if(key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
 		glfwSetWindowShouldClose(window, GL_TRUE);
 	}
 }
@@ -52,20 +56,20 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action, 
 static void char_callback(GLFWwindow *window, unsigned int key)
 {
 	keyToggles[key] = !keyToggles[key];
-	switch(key) {
-		case 'h':
-			scene->step();
-			break;
-		case 'r':
-			scene->reset();
-			break;
+	switch (key) {
+	case 'h':
+		scene->step();
+		break;
+	case 'r':
+		scene->reset();
+		break;
 	}
 }
 
 static void cursor_position_callback(GLFWwindow* window, double xmouse, double ymouse)
 {
 	int state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
-	if(state == GLFW_PRESS) {
+	if (state == GLFW_PRESS) {
 		camera->mouseMoved(xmouse, ymouse);
 	}
 }
@@ -78,10 +82,10 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 	// Get current window size.
 	int width, height;
 	glfwGetWindowSize(window, &width, &height);
-	if(action == GLFW_PRESS) {
+	if (action == GLFW_PRESS) {
 		bool shift = mods & GLFW_MOD_SHIFT;
-		bool ctrl  = mods & GLFW_MOD_CONTROL;
-		bool alt   = mods & GLFW_MOD_ALT;
+		bool ctrl = mods & GLFW_MOD_CONTROL;
+		bool alt = mods & GLFW_MOD_ALT;
 		camera->mouseClicked(xmouse, ymouse, shift, ctrl, alt);
 	}
 }
@@ -89,7 +93,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 static void init()
 {
 	GLSL::checkVersion();
-	
+
 	// Set background color
 	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 	// Enable z-buffer test
@@ -97,7 +101,7 @@ static void init()
 	// Enable alpha blending
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	
+
 	progSimple = make_shared<Program>();
 	progSimple->setShaderNames(RESOURCE_DIR + "simple_vert.glsl", RESOURCE_DIR + "simple_frag.glsl");
 	progSimple->setVerbose(true); // Set this to true when debugging.
@@ -105,7 +109,7 @@ static void init()
 	progSimple->addUniform("P");
 	progSimple->addUniform("MV");
 	//progSimple->setVerbose(false);
-	
+
 	prog = make_shared<Program>();
 	prog->setVerbose(true); // Set this to true when debugging.
 	prog->setShaderNames(RESOURCE_DIR + "phong_vert.glsl", RESOURCE_DIR + "phong_frag.glsl");
@@ -120,14 +124,14 @@ static void init()
 	prog->addAttribute("aSca");
 	prog->addAttribute("aNor");
 	//prog->setVerbose(false);
-	
+
 	camera = make_shared<Camera>();
 
 	scene = make_shared<Scene>();
 	scene->load(RESOURCE_DIR);
 	scene->tare();
 	scene->init();
-	
+
 	// If there were any OpenGL errors, this will print something.
 	// You can intersperse this line in your code to find the exact location
 	// of your OpenGL error.
@@ -140,28 +144,30 @@ void render()
 	int width, height;
 	glfwGetFramebufferSize(window, &width, &height);
 	glViewport(0, 0, width, height);
-	
+
 	// Use the window size for camera.
 	glfwGetWindowSize(window, &width, &height);
-	camera->setAspect((float)width/(float)height);
+	camera->setAspect((float)width / (float)height);
 	glClearColor(0.2, 0.2, 0.2, 1.0);
 
 	// Clear buffers
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	if(keyToggles[(unsigned)'c']) {
+	if (keyToggles[(unsigned)'c']) {
 		glEnable(GL_CULL_FACE);
-	} else {
+	}
+	else {
 		glDisable(GL_CULL_FACE);
 	}
-	if(keyToggles[(unsigned)'l']) {
+	if (keyToggles[(unsigned)'l']) {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-	} else {
+	}
+	else {
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	}
-	
+
 	auto P = make_shared<MatrixStack>();
 	auto MV = make_shared<MatrixStack>();
-	
+
 	// Apply camera transforms
 	P->pushMatrix();
 	camera->applyProjectionMatrix(P);
@@ -173,75 +179,180 @@ void render()
 	glUniformMatrix4fv(progSimple->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
 	glUniformMatrix4fv(progSimple->getUniform("MV"), 1, GL_FALSE, glm::value_ptr(MV->topMatrix()));
 	glLineWidth(2.0f);
-	float x0 = -5.0f;
-	float x1 = 5.0f;
-	float z0 = -5.0f;
-	float z1 = 5.0f;
+	float x0 = -10.0f;
+	float x1 = 10.0f;
+	float z0 = -10.0f;
+	float z1 = 10.0f;
+	float y = -2.0f;
 	int gridSize = 10;
 	glLineWidth(1.0f);
 	glBegin(GL_LINES);
-	for(int i = 1; i < gridSize; ++i) {
-		if(i == gridSize/2) {
+	for (int i = 1; i < gridSize; ++i) {
+		if (i == gridSize / 2) {
 			glColor3f(0.1f, 0.1f, 0.1f);
-		} else {
+		}
+		else {
 			glColor3f(0.8f, 0.8f, 0.8f);
 		}
 		float x = x0 + i / (float)gridSize * (x1 - x0);
-		glVertex3f(x, 0.0f, z0);
-		glVertex3f(x, 0.0f, z1);
+		glVertex3f(x, y, z0);
+		glVertex3f(x, y, z1);
 	}
-	for(int i = 1; i < gridSize; ++i) {
-		if(i == gridSize/2) {
+	for (int i = 1; i < gridSize; ++i) {
+		if (i == gridSize / 2) {
 			glColor3f(0.1f, 0.1f, 0.1f);
-		} else {
+		}
+		else {
 			glColor3f(0.8f, 0.8f, 0.8f);
 		}
 		float z = z0 + i / (float)gridSize * (z1 - z0);
-		glVertex3f(x0, 0.0f, z);
-		glVertex3f(x1, 0.0f, z);
+		glVertex3f(x0, y, z);
+		glVertex3f(x1, y, z);
 	}
 	glEnd();
 	glColor3f(0.4f, 0.4f, 0.4f);
 	glBegin(GL_LINE_LOOP);
-	glVertex3f(x0, 0.0f, z0);
-	glVertex3f(x1, 0.0f, z0);
-	glVertex3f(x1, 0.0f, z1);
-	glVertex3f(x0, 0.0f, z1);
+	glVertex3f(x0, y, z0);
+	glVertex3f(x1, y, z0);
+	glVertex3f(x1, y, z1);
+	glVertex3f(x0, y, z1);
 	glEnd();
 
-	glBegin(GL_TRIANGLES);
-	glColor3d(1.0f, 0.5f, 0.3f);
-	glVertex3f(50.0f, -2.0f, -10.0);
-	glVertex3f(-50.0, -2.0f, -10.0);
-	glVertex3f(50.0, -2.0f, 30.0);
-	glEnd();
+	if (RIGID_BODY == 1) {
+		// Draw Regular Box
+		double boxxl = -10;
+		double boxxh = 10;
+
+		double boxyl = -10;
+		double boxyh = 10;
+		double boxzl = -10;
+		double boxzh = 10;
+
+		GLfloat box_diffuse[] = { 0.7, 0.7, 0.7 };
+		GLfloat box_specular[] = { 0.1, 0.1, 0.1 };
+		GLfloat box_shininess[] = { 1.0 };
+		GLfloat ball_ambient[] = { 0.4, 0.0, 0.0 };
+		GLfloat ball_diffuse[] = { 0.3, 0.0, 0.0 };
+		GLfloat ball_specular[] = { 0.3, 0.3, 0.3 };
+		GLfloat ball_shininess[] = { 10.0 };
+		GLfloat box_ambient[] = { 0.1, 0.1, 0.1 };
+		GLfloat smallr00[] = { 0.1, 0.0, 0.0 };
+		GLfloat small0g0[] = { 0.0, 0.1, 0.0 };
+		GLfloat small00b[] = { 0.0, 0.0, 0.1 };
+		GLfloat smallrg0[] = { 0.1, 0.1, 0.0 };
+		GLfloat smallr0b[] = { 0.1, 0.0, 0.1 };
+		GLfloat small0gb[] = { 0.0, 0.1, 0.1 };
+		GLfloat smallrgb[] = { 0.1, 0.1, 0.1 };
+
+		//glPushMatrix();
+		glEnable(GL_COLOR_MATERIAL);
+
+		//Draw the box
+		//set material parameters
+		glMaterialfv(GL_FRONT, GL_AMBIENT, box_ambient);
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, box_diffuse);
+		glMaterialfv(GL_FRONT, GL_SPECULAR, box_specular);
+		glMaterialfv(GL_FRONT, GL_SHININESS, box_shininess);
+
+		glBegin(GL_QUADS);
+		//back face
+	
+		//glColor3f(244/256, 158/256, 66/256);
+		glColor3f(0.7, 0.4, 0.2);
+		glMaterialfv(GL_FRONT, GL_AMBIENT, smallrgb);
+		glVertex3f(boxxl, boxyl, boxzl);
+		glVertex3f(boxxh, boxyl, boxzl);
+		glVertex3f(boxxh, boxyh, boxzl);
+		glVertex3f(boxxl, boxyh, boxzl);
+
+		//glColorMaterial(GL_FRONT, GL_DIFFUSE);
+
+		//left face
+		glColor3f(0.3, 0.4, 0.6);
+
+		glMaterialfv(GL_FRONT, GL_AMBIENT, small0g0);
+		glVertex3f(boxxl, boxyl, boxzh);
+		glVertex3f(boxxl, boxyl, boxzl);
+		glVertex3f(boxxl, boxyh, boxzl);
+		glVertex3f(boxxl, boxyh, boxzh);
+
+		//glColorMaterial(GL_FRONT, GL_SPECULAR);
+		glColor3f(0.9, 0.1, 0.3);
+		//right face
+		glMaterialfv(GL_FRONT, GL_AMBIENT, small00b);
+		glVertex3f(boxxh, boxyl, boxzh);
+		glVertex3f(boxxh, boxyh, boxzh);
+		glVertex3f(boxxh, boxyh, boxzl);
+		glVertex3f(boxxh, boxyl, boxzl);
+
+
+		glColor3f(0.8, 0.4, 0.8);
+		//bottom face
+		glMaterialfv(GL_FRONT, GL_AMBIENT, smallrg0);
+		glVertex3f(boxxh, boxyl, boxzh);
+		glVertex3f(boxxh, boxyl, boxzl);
+		glVertex3f(boxxl, boxyl, boxzl);
+		glVertex3f(boxxl, boxyl, boxzh);
+
+		//top face
+		glColor3f(0.8, 0.2, 0.5);
+		glMaterialfv(GL_FRONT, GL_AMBIENT, smallr0b);
+		glVertex3f(boxxh, boxyh, boxzh);
+		glVertex3f(boxxl, boxyh, boxzh);
+		glVertex3f(boxxl, boxyh, boxzl);
+		glVertex3f(boxxh, boxyh, boxzl);
+
+		//front face
+		/*glColor3f(0.3, 0.4, 0.3);
+		glMaterialfv(GL_FRONT, GL_AMBIENT, small0gb);
+		glVertex3f(boxxh, boxyl, boxzh);
+		glVertex3f(boxxl, boxyl, boxzh);
+		glVertex3f(boxxl, boxyh, boxzh);
+		glVertex3f(boxxh, boxyh, boxzh);*/
+
+		glEnd();
+	}
+
+	if (FLOOR == 1) {
+		glBegin(GL_TRIANGLES);
+		glColor3d(1.0f, 0.5f, 0.3f);
+		glVertex3f(50.0f, -2.0f, -10.0);
+		glVertex3f(-50.0, -2.0f, -10.0);
+		glVertex3f(50.0, -2.0f, 30.0);
+		glEnd();
+	}
+
 
 
 	progSimple->unbind();
 
 	// Draw scene
 	prog->bind();
+	//glEnable(GL_BLEND);
+	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	//glDisable(GL_CULL_FACE);
+	//glDepthFunc(GL_LEQUAL);
 	glUniformMatrix4fv(prog->getUniform("P"), 1, GL_FALSE, glm::value_ptr(P->topMatrix()));
 	MV->pushMatrix();
 	scene->draw(MV, prog);
 	MV->popMatrix();
 	prog->unbind();
-	
+
 	//////////////////////////////////////////////////////
 	// Cleanup
 	//////////////////////////////////////////////////////
-	
+
 	// Pop stacks
 	MV->popMatrix();
 	P->popMatrix();
-	
+
 	GLSL::checkError(GET_FILE_LINE);
 }
 
 void stepperFunc()
 {
-	while(true) {
-		if(keyToggles[(unsigned)' ']) {
+	while (true) {
+		if (keyToggles[(unsigned)' ']) {
 			scene->step();
 		}
 		this_thread::sleep_for(chrono::microseconds(1));
@@ -250,21 +361,22 @@ void stepperFunc()
 
 int main(int argc, char **argv)
 {
-	if(argc < 2) {
+	if (argc < 2) {
 		cout << "Please specify the resource directory." << endl;
 		return 0;
 	}
 	RESOURCE_DIR = argv[1] + string("/");
-	
+
+
 	// Set error callback.
 	glfwSetErrorCallback(error_callback);
 	// Initialize the library.
-	if(!glfwInit()) {
+	if (!glfwInit()) {
 		return -1;
 	}
 	// Create a windowed mode window and its OpenGL context.
 	window = glfwCreateWindow(640, 480, "YOUR NAME", NULL, NULL);
-	if(!window) {
+	if (!window) {
 		glfwTerminate();
 		return -1;
 	}
@@ -272,7 +384,7 @@ int main(int argc, char **argv)
 	glfwMakeContextCurrent(window);
 	// Initialize GLEW.
 	glewExperimental = true;
-	if(glewInit() != GLEW_OK) {
+	if (glewInit() != GLEW_OK) {
 		cerr << "Failed to initialize GLEW" << endl;
 		return -1;
 	}
@@ -294,7 +406,7 @@ int main(int argc, char **argv)
 	// Start simulation thread.
 	thread stepperThread(stepperFunc);
 	// Loop until the user closes the window.
-	while(!glfwWindowShouldClose(window)) {
+	while (!glfwWindowShouldClose(window)) {
 		// Render scene.
 		render();
 		// Swap front and back buffers.

@@ -13,20 +13,21 @@
 #include "GLSL.h"
 #include "MatrixStack.h"
 #include "Spring.h"
+#include "Muscle.h"
 #include "stdlib.h"
 
 using namespace std;
 using namespace Eigen;
+//  f0: 0 2 1  f1: 0 1 3 f2: 1 3 2 f3: 0 2 3  CCW
 
 FemNesme::FemNesme(
 	double density,
 	const Eigen::Vector2d &damping)
 {
 	assert(density > 0.0);
-
 	this->damping = damping;
-	this->young = 1e2;
-	this->poisson = 0.30;
+	this->young = 1e1;
+	this->poisson = 0.35;
 
 	// Compute Lame coefficients: [mu, lambda]
 	this->mu = young / (2.0 * (1.0 + poisson));
@@ -34,19 +35,30 @@ FemNesme::FemNesme(
 
 	double r = 0.02; // Used for collisions
 
-	//in_2.load_ply("icosahedron"); // YOUNG: 1E1 POSSION 0.35
+	in_2.load_ply("icosahedron"); // YOUNG: 1E1 POSSION 0.35
 	//in_2.load_ply("dodecahedron"); // YOUNG: 1E0 POSSION 0.3
 	//in_2.load_off("octtorus");
 	//in_2.load_off("N");
-	//in_2.load_ply("bunny");
-	in_2.load_ply("tetrahedron"); // YOUNG: 1E2 POSSION 0.30
+	//in_2.load_ply("bunny33");
+	//in_2.load_ply("cube"); // YOUNG: 1E2 POSSION 0.30
 
-	tetrahedralize("pqz", &in_2, &out);
+	tetrahedralize("pqzn", &in_2, &out);
+
+	out.save_nodes("meshout");
+	out.save_elements("meshout");
+	out.save_faces("meshout");
+	out.save_neighbors("meshout");
 
 	nVerts = out.numberofpoints;
 	nTets = out.numberoftetrahedra;
 	nFacets = out.numberoffacets;
 	nTriFaces = out.numberoftrifaces;
+
+	faceMat.resize(4, 3);
+	faceMat << 0, 2, 1,
+		0, 1, 3,
+		1, 3, 2,
+		0, 2, 3;
 
 	// Build system matrices and vectors
 	n = 3 * nVerts;
@@ -112,10 +124,31 @@ FemNesme::FemNesme(
 		p->i = i;
 		p->fixed = false;
 	}
-
 	computeD(D, lambda, mu);
 
+	Vector3d bary = Vector3d(1.0/3.0, 1.0/3.0, 1.0/3.0);
+
+	// Create Muscles
+	//auto mus = make_shared<Muscle>(1);
+	//muscles.push_back(mus);
+
+	//// Create Muscle Segments
+	////  f0: 0 2 1  f1: 0 1 3 f2: 1 3 2 f3: 0 2 3  CCW
+
+	////Segment(double L0, int eleID, int faceinID, int faceoutID, Vector3d weightin, Vector3d weightout);
+	//auto seg0 = make_shared<Segment>(2.0/3.0, 1, 2, 3, bary, bary);
+	//auto seg1 = make_shared<Segment>(2.0/3.0, 2, 2, 1, bary, bary);
+	//auto seg2 = make_shared<Segment>(2.0/3.0, 4, 0, 3, bary, bary);
+	//muscles[0]->insertSegment(seg0);
+	//muscles[0]->insertSegment(seg1);
+	//muscles[0]->insertSegment(seg2);
+	
+
+
+
 	for (int itet = 0; itet < nTets; itet++) {
+
+
 
 		int a = out.tetrahedronlist[itet * 4 + 0];
 		int b = out.tetrahedronlist[itet * 4 + 1];
@@ -124,7 +157,6 @@ FemNesme::FemNesme(
 
 		Matrix3d R_rest;
 		computeQR(R_rest, X0, a, b, c);
-		cout << R_rest << endl;
 
 		MatrixXd rotatedRestPos(4, 3);
 		rotatedRestPos.row(0).setZero(); //a
@@ -134,17 +166,13 @@ FemNesme::FemNesme(
 
 		rotatedRestPosMatrix.block<4, 3>(4 * itet, 0) = rotatedRestPos;
 
-		cout << rotatedRestPos << endl;
-
 		//MatrixXd B_rest(6, 12);
 		//computeB(B_rest, volume, itet, rotatedRestPos.row(0), rotatedRestPos.row(1), rotatedRestPos.row(2), rotatedRestPos.row(3));
 
 		Matrix3d Rot;
 		Rot.setIdentity();
-
 		//MatrixXd BtDB(12,12);
 		//computeK(BtDB, B_rest, Rot);
-	
 	}
 	posBuf.clear();
 	norBuf.clear();
@@ -160,7 +188,6 @@ FemNesme::FemNesme(
 		eleBuf[3 * i + 1] = 3 * i + 1;
 		eleBuf[3 * i + 2] = 3 * i + 2;
 	}
-
 }
 
 void FemNesme::computeQR(Matrix3d &rotation, const VectorXd &x, const int &a, const int &b, const int &c) {
@@ -267,9 +294,53 @@ void FemNesme::step(double h, const Vector3d &grav) {
 		int c = out.tetrahedronlist[itet * 4 + 2];
 		int d = out.tetrahedronlist[itet * 4 + 3];
 
+		//for (int iseg = 0; iseg < muscles[0]->numElements; iseg ++) {
+		//	// Check if this tet has segment inside 
+		//	if (itet == muscles[0]->elementIDs[iseg]) {
+		//		// Compute the current length of the segment
+
+
+		//		// Compute the position of in point
+		//		int faceinID = muscles[0]->segments[iseg]->faceinID;
+		//		Vector3i verin = faceMat.row(faceinID);
+
+		//		Vector3d weightin = muscles[0]->segments[iseg]->weightin;
+
+		//		Vector3d inpoint;
+		//		inpoint.setZero();
+		//		for (int t = 0; t < 3; t++) {
+		//			inpoint += weightin(t) * x.segment(3 * out.tetrahedronlist[itet * 4 + verin(t)], 3);
+		//		}
+		//		
+
+		//		// Compute the position of out point
+		//		int faceoutID = muscles[0]->segments[iseg]->faceoutID;
+		//		Vector3d weightout = muscles[0]->segments[iseg]->weightout;
+		//		Vector3i verout = faceMat.row(faceoutID);
+
+		//		Vector3d outpoint;
+		//		outpoint.setZero();
+		//		for (int t = 0; t < 3; t++) {
+		//			outpoint += weightout(t) * x.segment(3 * out.tetrahedronlist[itet * 4 + verout(t)], 3);
+		//		}
+		//		
+		//		// Save the current length
+		//		//cout << "inpoint pos:" << inpoint << endl << endl;
+		//		//cout << "outpoint pos: " << outpoint << endl << endl;
+
+		//		Vector3d segment = outpoint - inpoint;
+		//		double len = segment.norm();
+		//		muscles[0]->segments[iseg]->L = len;
+		//		//cout << len << endl;
+		//		// Compute the muscle force f
+
+
+		//	}
+		//}
+
 		Matrix3d R_def;
 		computeQR(R_def, x, a, b, c);
-		cout << "R_def: " << R_def << endl << endl;
+		//cout << "R_def: " << R_def << endl << endl;
 
 		MatrixXd rotatedCurrentPos(4, 3);
 		rotatedCurrentPos.row(0).setZero(); //a
@@ -277,14 +348,13 @@ void FemNesme::step(double h, const Vector3d &grav) {
 		rotatedCurrentPos.row(2) = R_def * x.segment<3>(3 * c) - R_def * x.segment<3>(3 * a);
 		rotatedCurrentPos.row(3) = R_def * x.segment<3>(3 * d) - R_def * x.segment<3>(3 * a);
 
-		cout << "rotatedCurrentPos: " << rotatedCurrentPos << endl << endl;
+		//cout << "rotatedCurrentPos: " << rotatedCurrentPos << endl << endl;
 
 		MatrixXd B_def(6, 12);
 		computeB(B_def, volume, itet, rotatedCurrentPos.row(0), rotatedCurrentPos.row(1), rotatedCurrentPos.row(2), rotatedCurrentPos.row(3));
 
 		MatrixXd RtBtDB, RtBtDBR;
 		computeK(RtBtDB, RtBtDBR, B_def, R_def.transpose());
-		
 
 		VectorXd disp(12);
 		disp.setZero();
@@ -292,6 +362,21 @@ void FemNesme::step(double h, const Vector3d &grav) {
 		disp.segment<3>(3) = rotatedCurrentPos.row(1) - rotatedRestPosMatrix.row(4 * itet + 1);
 		disp.segment<3>(6) = rotatedCurrentPos.row(2) - rotatedRestPosMatrix.row(4 * itet + 2);
 		disp.segment<3>(9) = rotatedCurrentPos.row(3) - rotatedRestPosMatrix.row(4 * itet + 3);
+		//cout << "rotatedCurrentPos.row(1)" << rotatedCurrentPos.row(1) << endl << endl;
+		//cout << "rotatedRestPosMatrix.row(1)" << rotatedRestPosMatrix.row(4 * itet + 1)<<endl << endl;
+		//cout << "rotatedCurrentPos.row(2)" << rotatedCurrentPos.row(2) << endl << endl;
+		//cout << "rotatedRestPosMatrix.row(2)" << rotatedRestPosMatrix.row(4 * itet + 2) << endl << endl;
+
+
+		//cout << "displacement: " << disp << endl << endl;
+		if (coll != 1) {
+			for (int kk = 0; kk < 12; kk++) {
+						if (disp(kk) < 1e-8) {
+							disp(kk) = 0;
+						}
+					}
+		}
+		
 
 		MatrixXd RR(12, 12);
 		MatrixXd RRt(12, 12);
@@ -302,14 +387,41 @@ void FemNesme::step(double h, const Vector3d &grav) {
 		}
 		RRt = RR.transpose();
 		VectorXd Fe =  B_def.transpose() * D * B_def * disp;
+		//cout << "deformation: " << B_def * disp << endl << endl;
+		//cout << "B_def: "<< B_def << endl << endl;
+		
+		MatrixXd Ke = RR * B_def.transpose() * D * B_def;
+		//cout << "Ke :" << Ke << endl << endl;
+
+		K.block(3 * a, 3 * a, 3, 3) += Ke.block(0, 0, 3, 3);
+		K.block(3 * b, 3 * b, 3, 3) += Ke.block(3, 3, 3, 3);
+		K.block(3 * c, 3 * c, 3, 3) += Ke.block(6, 6, 3, 3);
+		K.block(3 * d, 3 * d, 3, 3) += Ke.block(9, 9, 3, 3);
+		K.block(3 * a, 3 * b, 3, 3) += Ke.block(0, 3, 3, 3);
+		K.block(3 * a, 3 * c, 3, 3) += Ke.block(0, 6, 3, 3);
+		K.block(3 * a, 3 * d, 3, 3) += Ke.block(0, 9, 3, 3);
+		K.block(3 * b, 3 * a, 3, 3) += Ke.block(3, 0, 3, 3);
+		K.block(3 * b, 3 * c, 3, 3) += Ke.block(3, 6, 3, 3);
+		K.block(3 * b, 3 * d, 3, 3) += Ke.block(3, 9, 3, 3);
+		K.block(3 * c, 3 * a, 3, 3) += Ke.block(6, 0, 3, 3);
+		K.block(3 * c, 3 * b, 3, 3) += Ke.block(6, 3, 3, 3);
+		K.block(3 * c, 3 * d, 3, 3) += Ke.block(6, 9, 3, 3);
+		K.block(3 * d, 3 * a, 3, 3) += Ke.block(9, 0, 3, 3);
+		K.block(3 * d, 3 * b, 3, 3) += Ke.block(9, 3, 3, 3);
+		K.block(3 * d, 3 * c, 3, 3) += Ke.block(9, 6, 3, 3);
+
 		//VectorXd Fe = RtBtDB * disp;
 
 		//cout << "Displacement disp: " << endl << disp << endl << endl;
 		//cout << "StrainDisplacement Be: " << endl << B_def << endl << endl;	
 		//cout << "Stiffness Ke: " << endl << RtBtDB << endl << endl;
 		//cout << "Forces: " << endl << Fe << endl << endl;
-		
+		//cout << "Forces: a " << endl << -R_def.transpose()*Fe.segment<3>(0) << endl << endl;
+		//cout << "Forces: b " << endl << -R_def.transpose()*Fe.segment<3>(3) << endl << endl;
+		//cout << "Forces: c " << endl << -R_def.transpose()*Fe.segment<3>(6) << endl << endl;
+		//cout << "Forces: d " << endl << -R_def.transpose()*Fe.segment<3>(9) << endl << endl;
 		//F.segment<3>((3 * a)) -= Fe.segment<3>(3) + Fe.segment<3>(6) + Fe.segment<3>(9);
+
 		F.segment<3>((3 * a)) += -R_def.transpose()*Fe.segment<3>(0);//a = 0
 		F.segment<3>((3 * b)) += -R_def.transpose()*Fe.segment<3>(3);//b=3
 		F.segment<3>((3 * c)) += -R_def.transpose()*Fe.segment<3>(6);//c=2
@@ -323,6 +435,7 @@ void FemNesme::step(double h, const Vector3d &grav) {
 
 	double damping = 0.9;
 	LHS = M + h*damping*M;
+	//- h*h*damping * K
 	VectorXd RHS(n);
 	RHS.setZero();
 	RHS = M * v + h * F ;
@@ -346,15 +459,31 @@ void FemNesme::step(double h, const Vector3d &grav) {
 			particles[i]->x += particles[i]->v * h;
 		}
 	}
-
+	double test = 0;
 	//Collision Detection with the floor
 	for (int i = 0; i < particles.size(); i++) {
-		if (particles[i]->x(1) <= -2.0 && particles[i]->v(1) < -0.00001) {
-			particles[i]->x(1) = -2.0;
+		test += particles[i]->x(1);
+		
+		if (particles[i]->x(1) <= -1.5 && particles[i]->v(1) < -0.00001) {
+			
+			particles[i]->x(1) = -1.5;
 			particles[i]->v(1) = 0.0;
+			//cout << i << " : v(1)=" << particles[i]->v(1) << endl<<endl;
 		}
-		//cout << "x_" << i << endl << particles[i]->x << endl;
+		//cout << "x_" << i << endl << particles[i]->x << endl	
 	}
+	
+	//if (test <- 1.2 * particles.size()) {
+	//	coll = 1;
+	//	cout << test << endl;
+	//	this->young = 1e2;
+	//	this->poisson = 0.30;
+	//	//cout << "hello!" << endl;
+	//	// Compute Lame coefficients: [mu, lambda]
+	//	this->mu = young / (2.0 * (1.0 + poisson));
+	//	this->lambda = young * poisson / ((1.0 + poisson)*(1.0 - 2.0 * poisson));
+	//	computeD(D, lambda, mu);
+	//}	
 	updatePosNor();
 }
 
@@ -459,6 +588,48 @@ void FemNesme::computeD(MatrixXd &Dmatrix, double lambda, double mu) {
 		0, 0, 0, 0, v2, 0,
 		0, 0, 0, 0, 0, v2;
 }
+
+// This test function is adapted from Moller - Trumbore intersection algorithm.
+// See https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm 
+
+bool FemNesme::rayTriangleIntersects(Vector3d v1, Vector3d v2, Vector3d v3, Vector3d dir, Vector3d pos) {
+
+	Vector3d e1 = v2 - v1;
+	Vector3d e2 = v3 - v1;
+
+	// Calculate planes normal vector
+	//cross product
+	Vector3d pvec = dir.cross(e2);
+
+	//dot product
+	double det = e1.dot(pvec);
+
+	// Ray is parallel to plane
+	if (det <1e-8 && det > -1e-8) {
+		return false;
+	}
+
+	double inv_det = 1 / det;
+
+	// Distance from v1 to ray pos
+	Vector3d tvec = pos - v1;
+	double u = (tvec.dot(pvec))*inv_det;
+	if (u < 0 || u > 1) {
+		return false;
+	}
+
+	Vector3d qvec = tvec.cross(e1);
+	double v = dir.dot(qvec) * inv_det;
+	if (v<0 || u + v>1) {
+		return false;
+	}
+
+	double t = e2.dot(qvec) * inv_det;
+	if (t > 1e-8) { return true; }
+	return false;
+}
+
+
 
 FemNesme::~FemNesme()
 {

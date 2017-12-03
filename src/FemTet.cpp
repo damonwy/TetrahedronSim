@@ -19,7 +19,6 @@
 
 #include <crtdbg.h>
 #include <Eigen/Core>
-#include "MatrixReplacement.h"
 
 using namespace std;
 using namespace Eigen;
@@ -53,7 +52,7 @@ typedef Eigen::Triplet<double> T;
 #define YOUNG 100
 #define POISSON 0.4
 #define MOSEK 0
-#define MATERIAL 3
+#define MATERIAL 4
 
 FemTet::FemTet(double density, const Eigen::Vector2d &damping)
 {
@@ -75,8 +74,8 @@ FemTet::FemTet(double density, const Eigen::Vector2d &damping)
 	//in_2.load_off("Y");
 	//in_2.load_ply("tetrahedron");
 	//in_2.load_ply("icosahedron");
-	//in_2.load_ply("dodecahedron");
-	in_2.load_ply("bunny250");
+	in_2.load_ply("dodecahedron");
+	//in_2.load_ply("bunny250");
 	tetrahedralize("pqz", &in_2, &out);
 
 	// Get tets info
