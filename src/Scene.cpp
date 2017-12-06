@@ -54,7 +54,7 @@ void Scene::load(const string &RESOURCE_DIR)
 		femSimit = make_shared<FemSimit>(density, damping);
 	}
 	if (MODEL == 13) {
-		h = 1e-2;
+		h = 1e0;
 		femMuller = make_shared<FemMuller>(density, damping);
 	}
 }
@@ -88,7 +88,7 @@ void Scene::reset()
 
 }
 
-void Scene::step()
+void Scene::step(const bool *keyToggles)
 {
 	t += h;
 
@@ -102,7 +102,7 @@ void Scene::step()
 		femSimit->step(h, grav);
 	}
 	if (MODEL == 13) {
-		femMuller->step(h, grav);
+		femMuller->step(h, grav, keyToggles);
 	}
 }
 
@@ -121,5 +121,23 @@ void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog) con
 	}
 	if (MODEL == 13) {
 		femMuller->draw(MV, prog);
+	}
+}
+
+void Scene::draw(shared_ptr<MatrixStack> MV, const shared_ptr<Program> prog, const shared_ptr<Program> prog1, const shared_ptr<MatrixStack> P) const
+{
+	glUniform3fv(prog->getUniform("kdFront"), 1, Vector3f(1.0, 1.0, 1.0).data());
+
+	if (MODEL == 10) {
+		femtet->draw(MV, prog);
+	}
+	if (MODEL == 11) {
+		femNesme->draw(MV, prog);
+	}
+	if (MODEL == 12) {
+		femSimit->draw(MV, prog);
+	}
+	if (MODEL == 13) {
+		femMuller->draw(MV, prog, prog1, P);
 	}
 }

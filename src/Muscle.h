@@ -18,11 +18,9 @@ public:
 	double k;  // stiffness
 	int eleID; // index of element
 
-	int faceinID; // the index of face in one tet 
-	int faceoutID; 
-
 	std::shared_ptr<Particle> p0;
 	std::shared_ptr<Particle> p1;
+	Segment();
 	Segment(std::shared_ptr<Particle> p0, std::shared_ptr<Particle> p1);
 };
 
@@ -32,16 +30,19 @@ public:
 	int numElements; // number of muscle segments
 	int type; // LONGITUDINAL
 	int muscleID;
-	
+
 	std::shared_ptr<Particle> p0;
 	std::shared_ptr<Particle> p1;
+	Eigen::Vector3d direction;
 
 	double E;
 	double L;
 	double L0;
-
-	double time;
-
+	double Ld;
+	int time;
+	int theta;
+	bool isActive;
+	Muscle();
 	Muscle(std::shared_ptr<Particle> p0, std::shared_ptr<Particle> p1);
 	virtual ~Muscle();
 
@@ -52,7 +53,7 @@ public:
 	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p) const;
 	void init();
 	void updatePos();
-	void step(std::vector< std::shared_ptr<Particle> > particles);
+	void step(std::vector< std::shared_ptr<Particle> > particles, int model);
 
 private:
 	unsigned eleBufID;

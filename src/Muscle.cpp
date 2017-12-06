@@ -10,13 +10,21 @@
 using namespace std;
 using namespace Eigen;
 
+Segment::Segment() {
+
+}
+
 Segment::Segment(shared_ptr<Particle> p0, shared_ptr<Particle> p1) {
 	this->p0 = p0;
 	this->p1 = p1;
 	this->L0 = (p0->x - p1->x).norm();
-	this->Ld = 2 * this->L0;
+	this->Ld = this->L0;
 	this->L = this->L0;
-	this->k = 1e2;
+	this->k = 1e3;
+}
+
+Muscle::Muscle() {
+
 }
 
 Muscle::Muscle(shared_ptr<Particle> p0, shared_ptr<Particle> p1) :
@@ -27,8 +35,11 @@ Muscle::Muscle(shared_ptr<Particle> p0, shared_ptr<Particle> p1) :
 	assert(p0 != p1);
 	this->p0 = p0;
 	this->p1 = p1;
-	this->time = 0.0;
-	this->numElements = 0;	
+	this->time = 0;
+	this->numElements = 0;
+	this->theta = 0;
+	this->isActive = false;
+	this->direction = (p1->x - p0->x).normalized();
 }
 
 void Muscle::updatePos() {
@@ -48,7 +59,7 @@ void Muscle::init() {
 	posBuf.resize(6 * numElements);
 	eleBuf.resize(2 * numElements);
 	updatePos();
-	
+
 	for (int i = 0; i < numElements; i++) {
 		eleBuf[2 * i + 0] = 2 * i + 0;
 		eleBuf[2 * i + 1] = 2 * i + 1;
@@ -72,16 +83,24 @@ void Muscle::insertSegment(std::shared_ptr<Segment> segment) {
 	elementIDs.push_back(segment->eleID);
 	numElements += 1;
 }
- 
-void Muscle::step(std::vector< std::shared_ptr<Particle> > particles) {
-	time += 1.0;
-	if (time) {
-		for (int iseg = 0; iseg < numElements; iseg++) {
 
+void Muscle::step(std::vector< std::shared_ptr<Particle> > particles, int model) {
+	time += 1;
+	if (time % 1 == 0 && model == 0) {
+		for (int iseg = 0; iseg < numElements; iseg++) {
+			this->segments[iseg]->Ld = (1.5 + 1 * sin(theta * 3.141592 / 180.0))* this->segments[iseg]->L0;
 		}
-		this->Ld = 2 * this->L0;
+		theta += 1;
 	}
 
+	if (time % 10 == 0 && model == 1) {
+		for (int iseg = 0; iseg < numElements; iseg++) {
+			this->segments[iseg]->Ld = (2.5 + 2 * sin(theta * 3.141592 / 180.0))* this->segments[iseg]->L0;
+		}
+		theta += 1;
+	}
+
+	// update muscle position
 	for (int i = 0; i < numElements; i++) {
 		double u0 = segments[i]->p0->U;
 		double v0 = segments[i]->p0->V;
@@ -102,25 +121,22 @@ void Muscle::step(std::vector< std::shared_ptr<Particle> > particles) {
 }
 
 void Muscle::draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p) const {
-	glUniform3fv(p->getUniform("kdFront"), 1, Vector3f(1.0, 0.0, 0.0).data());
-	glUniform3fv(p->getUniform("kdBack"), 1, Vector3f(1.0, 1.0, 0.0).data());
 	MV->pushMatrix();
-
 	glUniformMatrix4fv(p->getUniform("MV"), 1, GL_FALSE, glm::value_ptr(MV->topMatrix()));
-
-	int h_pos = p->getAttribute("aPos");
-	glEnableVertexAttribArray(h_pos);
-	glBindBuffer(GL_ARRAY_BUFFER, posBufID);
-	glBufferData(GL_ARRAY_BUFFER, posBuf.size() * sizeof(float), &posBuf[0], GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(h_pos, 3, GL_FLOAT, GL_FALSE, 0, (const void *)0);
-
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, eleBufID);
-	glLineWidth(3.0);
-	glDrawElements(GL_LINES, 2 * numElements, GL_UNSIGNED_INT, (const void *)(0 * sizeof(unsigned int)));
-
-	glDisableVertexAttribArray(h_pos);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+	if (this->isActive) {
+		glColor3f(0.0, 1.0, 0.0);   // green 
+		glLineWidth(3.5);
+	}
+	else {
+		glColor3f(0.0, 0.0, 1.0);   // BLUE
+		glLineWidth(2.5);
+	}
+	glBegin(GL_LINES);
+	for (int iseg = 0; iseg < numElements; iseg++) {
+		glVertex3f(posBuf[6 * iseg], posBuf[6 * iseg + 1], posBuf[6 * iseg + 2]);
+		glVertex3f(posBuf[6 * iseg + 3], posBuf[6 * iseg + 4], posBuf[6 * iseg + 5]);
+	}
+	glEnd();
 	MV->popMatrix();
 }
 

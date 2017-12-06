@@ -24,7 +24,7 @@ public:
 
 	virtual ~FemMuller();
 
-	void step(double h, const Eigen::Vector3d &grav);
+	void step(double h, const Eigen::Vector3d &grav, const bool *keyToggles);
 	void init();
 	void tare();
 	void reset();
@@ -33,10 +33,11 @@ public:
 	void updatePosNor();
 	bool rayTriangleIntersects(Eigen::Vector3d v1, Eigen::Vector3d v2, Eigen::Vector3d v3, Eigen::Vector3d dir, Eigen::Vector3d pos, double &t, double &u, double &v);
 	void createMuscle(Eigen::Vector3d p0, Eigen::Vector3d p1);
-
+	void draw(std::shared_ptr<MatrixStack> MV, const std::shared_ptr<Program> p, const std::shared_ptr<Program> p1, const std::shared_ptr<MatrixStack> P) const;
 private:
 	double young;
 	double poisson;
+	int model;
 	int steps;
 	int n;
 	int nVerts;
@@ -44,7 +45,22 @@ private:
 	int nTriFaces;
 	int nTets;
 	tetgenio in, out, in_2;
+	bool isTop;
+	bool isBottom;
+	bool isLeft;
+	bool isRight;
 
+	int a, b, c, d;
+	Eigen::Matrix3d dp, U, R, FF, stress, P;
+	Eigen::MatrixXd RKR;
+	Eigen::MatrixXd Ke;
+	Eigen::MatrixXd Re;
+
+	Eigen::VectorXd xx;
+	Eigen::VectorXd RKX;
+	Eigen::Vector3d xa, pb, pc, pd, a0, a1, r0, r1, r2;
+
+	Eigen::Matrix3d I;
 	Eigen::Matrix3d X_inv;
 	Eigen::MatrixXd X_invs;
 	std::vector< std::shared_ptr<Particle> > particles;
@@ -54,6 +70,7 @@ private:
 	Eigen::VectorXd mass;
 	Eigen::VectorXd volume;
 	Eigen::VectorXd v;
+	Eigen::VectorXd F0;
 	Eigen::VectorXd F;
 	Eigen::VectorXd X;
 	Eigen::Vector2d damping;
@@ -73,4 +90,3 @@ private:
 	unsigned norBufID;
 	unsigned texBufID;
 };
-
